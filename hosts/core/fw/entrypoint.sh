@@ -14,6 +14,17 @@ fi
 WAN_NET=$(ip -o -4 route show dev "$WAN_IF" scope link | awk '{print $1; exit}')
 WAN_GW=$(echo "$WAN_NET" | cut -d/ -f1 | awk -F. '{print $1"."$2"."$3".1"}')
 
+# 게이트웨이 보조주소(.254).
+#   엔드포인트 호스트의 컨테이너는 게이트웨이로 .1 을 받는다(compose 에 그렇게 선언).
+#   그런데 코어에서는 docker 가 '선언된 게이트웨이 주소'를 예약해 버려서 .1 을 이 장비에
+#   줄 수 없다. 그래서 코어 쪽 망은 .254 로 선언하고, 실제 게이트웨이인 이 장비가
+#   .1 과 .254 를 함께 갖는다. 한 인터페이스에 주소 둘을 두는 평범한 구성이다.
+for leg in $(ip -o -4 addr show | awk '$4 ~ /^10\.30\./ && $4 !~ /^10\.30\.1\./ {print $2 "," $4}'); do
+    dev=${leg%%,*}; cidr=${leg##*,}
+    net=$(echo "$cidr" | cut -d/ -f1 | awk -F. '{print $1"."$2"."$3}')
+    ip addr add "$net.254/24" dev "$dev" 2>/dev/null || true
+done
+
 echo "[fw] 인터페이스"
 ip -o -4 addr show | grep -v ' lo ' | awk '{print "     " $2 "  " $4}'
 echo "[fw] WAN = $WAN_IF ($WAN_NET), 기본 게이트웨이 $WAN_GW"

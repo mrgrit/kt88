@@ -11,6 +11,15 @@ DMZ_IF=$(iface_of  '^10\.30\.20\.')
 INT_IF=$(iface_of  '^10\.30\.30\.')
 RES_IF=$(iface_of  '^10\.30\.40\.')
 
+# 게이트웨이 보조주소(.254) — fw 와 같은 이유. 코어에서 뜨는 컨테이너(웹앱 등)는
+# docker 가 예약한 .254 를 게이트웨이로 받으므로, 실제 게이트웨이인 이 장비가 함께 갖는다.
+# pipe(10.30.1.0/24)는 bridge 라 docker 가 진짜 게이트웨이를 쥐고 있으므로 제외한다.
+for leg in $(ip -o -4 addr show | awk '$4 ~ /^10\.30\./ && $4 !~ /^10\.30\.1\./ {print $2 "," $4}'); do
+    dev=${leg%%,*}; cidr=${leg##*,}
+    net=$(echo "$cidr" | cut -d/ -f1 | awk -F. '{print $1"."$2"."$3}')
+    ip addr add "$net.254/24" dev "$dev" 2>/dev/null || true
+done
+
 echo "[ips] 인터페이스"
 ip -o -4 addr show | grep -v ' lo ' | awk '{print "     " $2 "  " $4}'
 echo "[ips] pipe=$PIPE_IF dmz=$DMZ_IF int=$INT_IF res=$RES_IF"
