@@ -1,0 +1,26 @@
+# kt88 IPS — 실습용 로컬 룰 (sid >= 1000000).
+# el34 의 룰을 그대로 계승한다.
+
+alert http any any -> any any (msg:"KT88 SQL Injection - UNION SELECT"; \
+    flow:established,to_server; content:"UNION"; nocase; content:"SELECT"; nocase; \
+    distance:0; within:30; sid:1000001; rev:1;)
+
+alert http any any -> any any (msg:"KT88 XSS - script tag"; \
+    flow:established,to_server; content:"<script"; nocase; \
+    sid:1000002; rev:1;)
+
+alert http any any -> any any (msg:"KT88 Bot UA - sqlmap"; \
+    flow:established,to_server; content:"User-Agent|3a 20|sqlmap"; nocase; http_header; \
+    sid:1000003; rev:1;)
+
+alert http any any -> any any (msg:"KT88 Path Traversal Attempt"; \
+    flow:established,to_server; content:"../"; pcre:"/\.\.\//"; \
+    sid:1000004; rev:1;)
+
+alert tcp any any -> any any (msg:"KT88 Possible nmap SYN scan"; \
+    flags:S; threshold:type both, track by_src, count 30, seconds 10; \
+    sid:1000005; rev:1;)
+
+# 망분리 검증용 — 연구망(샌드박스)이 내부망을 건드리려는 시도.
+alert ip 10.30.40.0/24 any -> 10.30.30.0/24 any (msg:"KT88 연구망->내부망 접근 시도"; \
+    sid:1000006; rev:1;)
