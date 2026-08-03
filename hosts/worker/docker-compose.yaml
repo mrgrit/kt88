@@ -3,24 +3,28 @@ name: kt88-worker
 # worker(192.168.0.203) — 내부망(int) 업무 엔드포인트가 올라가는 호스트.
 #
 # 호스트 커널 설정은 아무것도 필요 없다. macvlan 네트워크 하나를 정의하면 컨테이너가
-# 내부망에 자기 IP 로 직접 붙고, 게이트웨이는 코어의 방화벽이다.
+# 내부망에 자기 IP 로 직접 붙고, 게이트웨이는 코어의 IPS 다.
 # 엔드포인트를 늘리려면 services 에 한 항목씩 추가하면 된다.
 
 services:
   ep-linux-01:
     container_name: kt88-ep-linux-01
-    image: ubuntu:22.04
+    build: ../../endpoint
+    image: kt88-endpoint:latest
     hostname: ep-linux-01
-    command: sleep infinity
+    environment:
+      AGENT_NAME: ep-linux-01
     networks:
       int: { ipv4_address: 10.30.30.11 }
     restart: unless-stopped
 
   ep-linux-02:
     container_name: kt88-ep-linux-02
-    image: ubuntu:22.04
+    image: kt88-endpoint:latest
+    depends_on: [ep-linux-01]      # 이미지 빌드를 한 번만 하기 위해
     hostname: ep-linux-02
-    command: sleep infinity
+    environment:
+      AGENT_NAME: ep-linux-02
     networks:
       int: { ipv4_address: 10.30.30.12 }
     restart: unless-stopped

@@ -56,6 +56,7 @@ services:
       int:  { ipv4_address: 10.30.30.1 }
       res:  { ipv4_address: 10.30.40.1 }
       app:  { ipv4_address: 10.30.50.1 }
+      mgmt: { ipv4_address: 10.30.60.1 }
     volumes:
       - suricata-logs:/var/log/suricata
     restart: unless-stopped
@@ -89,6 +90,90 @@ services:
     hostname: dvwa
     networks:
       app: { ipv4_address: 10.30.50.12 }
+    restart: unless-stopped
+
+  # ╭─ SIEM (관리망 10.30.60.0/24) ─────────────────────────────────╮
+  # 엔드포인트가 다른 호스트에 있어도 관리망의 manager 로 직접 에이전트를 등록한다.
+  # el34 는 manager 포트를 아예 열지 않아 원격 등록이 불가능했는데, kt88 은 그게 목적이다.
+  wazuh-indexer:
+    container_name: kt88-wazuh-indexer
+    image: wazuh/wazuh-indexer:4.10.0
+    hostname: wazuh.indexer
+    environment:
+      OPENSEARCH_JAVA_OPTS: "-Xms1g -Xmx1g"
+      TZ: Asia/Seoul
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile:  { soft: 65536, hard: 65536 }
+    volumes:
+      - indexer-data:/var/lib/wazuh-indexer
+      - ./siem/certs/root-ca.pem:/usr/share/wazuh-indexer/certs/root-ca.pem:ro
+      - ./siem/certs/wazuh.indexer-key.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.key:ro
+      - ./siem/certs/wazuh.indexer.pem:/usr/share/wazuh-indexer/certs/wazuh.indexer.pem:ro
+      - ./siem/certs/admin.pem:/usr/share/wazuh-indexer/certs/admin.pem:ro
+      - ./siem/certs/admin-key.pem:/usr/share/wazuh-indexer/certs/admin-key.pem:ro
+      - ./siem/config/wazuh_indexer.yml:/usr/share/wazuh-indexer/opensearch.yml:ro
+      - ./siem/config/internal_users.yml:/usr/share/wazuh-indexer/opensearch-security/internal_users.yml:ro
+    networks:
+      mgmt: { ipv4_address: 10.30.60.10, aliases: [wazuh.indexer, wazuh-indexer] }
+    restart: unless-stopped
+
+  wazuh-manager:
+    container_name: kt88-wazuh-manager
+    image: wazuh/wazuh-manager:4.10.0
+    hostname: wazuh.manager
+    depends_on: [wazuh-indexer]
+    environment:
+      TZ: Asia/Seoul
+      INDEXER_URL: https://wazuh.indexer:9200
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: SecretPassword
+      FILEBEAT_SSL_VERIFICATION_MODE: full
+      SSL_CERTIFICATE_AUTHORITIES: /etc/ssl/root-ca.pem
+      SSL_CERTIFICATE: /etc/ssl/filebeat.pem
+      SSL_KEY: /etc/ssl/filebeat.key
+      API_USERNAME: wazuh-wui
+      API_PASSWORD: MyS3cr37P450r.*-
+    ulimits:
+      memlock: { soft: -1, hard: -1 }
+      nofile:  { soft: 655360, hard: 655360 }
+    volumes:
+      - manager-etc:/var/ossec/etc
+      - manager-logs:/var/ossec/logs
+      - manager-queue:/var/ossec/queue
+      - manager-var:/var/ossec/var
+      - ./siem/certs/root-ca-manager.pem:/etc/ssl/root-ca.pem:ro
+      - ./siem/certs/wazuh.manager.pem:/etc/ssl/filebeat.pem:ro
+      - ./siem/certs/wazuh.manager-key.pem:/etc/ssl/filebeat.key:ro
+    networks:
+      mgmt: { ipv4_address: 10.30.60.11, aliases: [wazuh.manager, wazuh-manager, siem] }
+    restart: unless-stopped
+
+  wazuh-dashboard:
+    container_name: kt88-wazuh-dashboard
+    image: wazuh/wazuh-dashboard:4.10.0
+    hostname: wazuh.dashboard
+    depends_on: [wazuh-indexer, wazuh-manager]
+    environment:
+      TZ: Asia/Seoul
+      INDEXER_USERNAME: admin
+      INDEXER_PASSWORD: SecretPassword
+      WAZUH_API_URL: https://wazuh.manager
+      DASHBOARD_USERNAME: kibanaserver
+      DASHBOARD_PASSWORD: kibanaserver
+      API_USERNAME: wazuh-wui
+      API_PASSWORD: MyS3cr37P450r.*-
+    volumes:
+      - ./siem/certs/root-ca.pem:/usr/share/wazuh-dashboard/certs/root-ca.pem:ro
+      - ./siem/certs/wazuh.dashboard-key.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard-key.pem:ro
+      - ./siem/certs/wazuh.dashboard.pem:/usr/share/wazuh-dashboard/certs/wazuh-dashboard.pem:ro
+      - ./siem/config/opensearch_dashboards.yml:/usr/share/wazuh-dashboard/config/opensearch_dashboards.yml:ro
+      - ./siem/config/wazuh.yml:/usr/share/wazuh-dashboard/data/wazuh/config/wazuh.yml
+    ports:
+      - "5601:5601"        # 강사 브라우저 → https://192.168.0.202:5601
+    networks:
+      mgmt:  { ipv4_address: 10.30.60.12, aliases: [wazuh.dashboard] }
+      admin: {}
     restart: unless-stopped
 
   # ╭─ 공격자 — 외부망에서 출발. 학생 실습의 출발점 ────────────────────╮
@@ -144,7 +229,24 @@ networks:
     driver_opts: { parent: enp1s0 }
     ipam:
       config: [{ subnet: 10.30.50.0/24, gateway: 10.30.50.254 }]
+  mgmt:
+    name: kt88-mgmt
+    driver: macvlan
+    driver_opts: { parent: enp1s0 }
+    ipam:
+      config: [{ subnet: 10.30.60.0/24, gateway: 10.30.60.254 }]
+
+  # 관리자 접근 전용 — 강사가 브라우저로 대시보드를 열기 위한 통로.
+  # macvlan 은 호스트에서 접근이 안 되고 포트 publish 도 안 되므로 bridge 를 함께 쓴다.
+  admin:
+    name: kt88-admin
+    driver: bridge
 
 volumes:
   suricata-logs:
   waf-logs:
+  indexer-data:
+  manager-etc:
+  manager-logs:
+  manager-queue:
+  manager-var:

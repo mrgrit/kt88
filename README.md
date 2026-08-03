@@ -17,11 +17,13 @@ fw 가 경계(외부망·인터넷)를, ips 가 내부 구간의 게이트웨이
                  │        │                                              │
                  │ [ips] Suricata + 내부 구간 통제   pipe 10.30.1.2         │
                  │        ├ 10.30.20.1 DMZ   ├ 10.30.30.1 내부망           │
-                 │        ├ 10.30.40.1 연구망 └ 10.30.50.1 웹앱             │
+                 │        ├ 10.30.40.1 연구망 ├ 10.30.50.1 웹앱             │
+                 │        │                  └ 10.30.60.1 관리망           │
                  │        │                                              │
                  │ [waf] Apache + ModSecurity(CRS)                       │
                  │        dmz 10.30.20.80 ──프록시──▶ app 10.30.50.80      │
                  │ 취약앱  juice-shop 10.30.50.11 / DVWA 10.30.50.12        │
+                 │ SIEM   indexer .60.10 / manager .60.11 / dashboard .60.12│
                  └───────────────────────┬───────────────────────────────┘
                                          ▲
         ┌────────────────────────────────┴─────────────────────────┐
@@ -37,6 +39,7 @@ fw 가 경계(외부망·인터넷)를, ips 가 내부 구간의 게이트웨이
 | int | 10.30.30.0/24 | 10.30.30.1 | 내부망 — 업무 엔드포인트 |
 | res | 10.30.40.0/24 | 10.30.40.1 | 연구망 — 분석/샌드박스 |
 | app | 10.30.50.0/24 | 10.30.50.1 | 웹앱 — WAF 뒤 (직접 접근 차단) |
+| mgmt | 10.30.60.0/24 | 10.30.60.1 | 관리망 — SIEM (에이전트 1514/1515만 허용) |
 
 **취약 웹앱은 WAF 를 통해서만 도달할 수 있다.** 공격자가 앱에 직접 가려 하면 fw 가 막고,
 내부망에서 가려 하면 ips 가 막는다. WAF 만 app 세그먼트에 다리를 걸치고 있다.
@@ -88,7 +91,8 @@ fw 가 경계(외부망·인터넷)를, ips 가 내부 구간의 게이트웨이
 scp -r kt88 ccc@<host>:/tmp/
 ssh ccc@<host> 'sudo /tmp/kt88/bootstrap/bootstrap-host.sh'
 
-# 코어
+# 코어 — 준비(커널 파라미터 + Wazuh 인증서) 후 기동
+ssh ccc@192.168.0.202 'sudo /tmp/kt88/hosts/core/prepare-core.sh'
 ssh ccc@192.168.0.202 'cd /tmp/kt88/hosts/core && docker compose up -d --build'
 # 엔드포인트
 ssh ccc@192.168.0.203 'cd /tmp/kt88/hosts/worker   && docker compose up -d'
@@ -128,6 +132,10 @@ ssh ccc@192.168.0.231 'cd /tmp/kt88/hosts/research && docker compose up -d'
 | SQLi / XSS / sqlmap | **403** — CRS 942100(SQLi), 941100(XSS), 913(스캐너) |
 | WAF 감사로그가 본 출발지 | **10.30.10.5** — 진짜 공격자 IP (NAT 없음) |
 | Suricata 가 본 출발지 | **10.30.10.5** — SQLi·XSS·sqlmap 전부 탐지 |
+| 에이전트 등록 | 다른 호스트의 엔드포인트 3대 모두 **Active** (ep-linux-01/02, res-01) |
+| 로그 파이프라인 | 엔드포인트 → 매니저 → 인덱서, `wazuh-alerts` 인덱스에 적재 확인 |
+| FIM 탐지 | res-01(.231)에서 `useradd` → `/etc/group`·`/etc/gshadow` 변경 알림 |
+| 대시보드 | `https://192.168.0.202:5601` 접근 가능 |
 
 세 계층이 각각 다른 근거로 같은 공격을 잡는다는 점이 그대로 드러난다 —
 **fw 는 경로를 막고(카운터), ips 는 패킷을 탐지하고(Suricata alert), waf 는 요청을
@@ -141,7 +149,9 @@ ssh ccc@192.168.0.231 'cd /tmp/kt88/hosts/research && docker compose up -d'
 ```
 net/segments.env        망 정의 — 단일 진실원천
 bootstrap/              갓 설치한 우분투 → kt88 호스트 (docker 설치만)
-hosts/core/             fw(경계) + ips(Suricata) + waf(ModSecurity) + 취약앱 + 공격자
+hosts/core/             fw + ips + waf + SIEM(Wazuh) + 취약앱 + 공격자
+hosts/core/prepare-core.sh  코어 전용 준비 — 커널 파라미터 + Wazuh 인증서
+endpoint/               엔드포인트 공용 이미지 (Wazuh 에이전트 내장)
 hosts/worker/           내부망 엔드포인트
 hosts/research/         연구망 엔드포인트
 ```
@@ -153,6 +163,6 @@ hosts/research/         연구망 엔드포인트
 - [x] 엔드포인트 확장 패턴 (3대 실기기 검증)
 - [x] IPS(Suricata) — 별도 컨테이너, fw→ips 체인 (실기기 검증)
 - [x] WAF(Apache+ModSecurity CRS) + 취약 웹앱 — fw→ips→waf→app 체인 완성
-- [ ] SIEM(Wazuh) + 엔드포인트 에이전트 등록
+- [x] SIEM(Wazuh) + 엔드포인트 에이전트 등록 — 원격 호스트 3대 Active, FIM 탐지 확인
 - [ ] 윈도우 엔드포인트
 - [ ] pjt 베어메탈 — **보류**
