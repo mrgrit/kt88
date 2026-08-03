@@ -132,6 +132,7 @@ ssh ccc@192.168.0.231 'cd /tmp/kt88/hosts/research && docker compose up -d'
 | SQLi / XSS / sqlmap | **403** — CRS 942100(SQLi), 941100(XSS), 913(스캐너) |
 | WAF 감사로그가 본 출발지 | **10.30.10.5** — 진짜 공격자 IP (NAT 없음) |
 | Suricata 가 본 출발지 | **10.30.10.5** — SQLi·XSS·sqlmap 전부 탐지 |
+| ET Open 룰셋 | **52,069개 로딩(실패 0)** — Shellshock(CVE-2014-6271) 등 실제 탐지 |
 | 에이전트 등록 | 다른 호스트의 엔드포인트 3대 모두 **Active** (ep-linux-01/02, res-01) |
 | 로그 파이프라인 | 엔드포인트 → 매니저 → 인덱서, `wazuh-alerts` 인덱스에 적재 확인 |
 | FIM 탐지 | res-01(.231)에서 `useradd` → `/etc/group`·`/etc/gshadow` 변경 알림 |
@@ -143,6 +144,10 @@ ssh ccc@192.168.0.231 'cd /tmp/kt88/hosts/research && docker compose up -d'
 
 > Host 헤더를 IP 로 보내면 CRS 920(“Host 가 IP”) 룰이 먼저 걸려 403 이 난다. SQLi/XSS
 > 룰이 걸린 것을 보려면 `-H "Host: dvwa.kt88.lab"` 처럼 이름으로 요청해야 한다.
+
+> IPS 는 기동에 **약 2분** 걸린다. 5만 개 룰로 탐지 엔진을 빌드하는 시간이고, N150
+> 4코어에서는 그 정도가 정상이다. 이 동안 CPU 한 코어가 100% 로 붙는다. 기동 후에는
+> 메모리 약 780MB, 유휴 CPU 8% 수준.
 
 ## 구조
 
