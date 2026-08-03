@@ -29,19 +29,14 @@ services:
       int: { ipv4_address: 10.30.30.12 }
     restart: unless-stopped
 
-  # ╭─ 내부망 DHCP — 윈도우처럼 VM 안에서 부팅해 스스로 주소를 받는 단말용 ──╮
-  dhcp:
-    container_name: kt88-dhcp
-    build: ./dhcp
-    hostname: dhcp
-    cap_add: [NET_ADMIN]
-    networks:
-      int: { ipv4_address: 10.30.30.2 }
-    restart: unless-stopped
-
   # ╭─ 윈도우 엔드포인트 — 컨테이너 안의 QEMU/KVM 에서 실행 ────────────────╮
-  # macvlan 인터페이스를 VM 에 그대로 넘겨(DHCP=Y) 윈도우가 내부망의 정식 구성원이
-  # 된다. 그래서 공격 대상도 되고, Wazuh 에이전트로 감시 대상도 된다.
+  # macvlan 인터페이스를 VM 에 그대로 넘겨 윈도우가 내부망의 정식 구성원이 된다.
+  # 그래서 공격 대상도 되고, Wazuh 에이전트로 감시 대상도 된다.
+  #
+  # 주소는 윈도우 안에서 고정 설정한다(install.bat). 랩 세그먼트가 강의실 LAN 과
+  # 같은 물리 L2 를 공유하는 탓에, DHCP 를 쓰면 강의실 라우터가 먼저 응답해 버린다.
+  # 실제로 겪었다 — VM 이 우리 대역이 아니라 192.168.0.105 를 받아갔다.
+  # 통제할 수 없는 서버와 경쟁시키지 않는다. 랩 주소는 전부 고정이다.
   #
   # 최초 기동 시 윈도우 이미지를 내려받고 무인 설치한다(수 GB, 회선에 따라 오래 걸림).
   # 진행 상황은 http://192.168.0.203:8006 에서 볼 수 있다.
@@ -54,7 +49,7 @@ services:
       RAM_SIZE: "4G"
       CPU_CORES: "2"
       DISK_SIZE: "64G"
-      DHCP: "Y"              # macvlan 을 VM 에 패스스루 → 내부망에서 직접 주소를 받는다
+      DHCP: "Y"              # macvlan 인터페이스를 VM 에 그대로 패스스루
     devices:
       - /dev/kvm
       - /dev/net/tun
