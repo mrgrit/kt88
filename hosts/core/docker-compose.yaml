@@ -1,0 +1,60 @@
+name: kt88-core
+
+# 코어(192.168.0.202) — 방화벽/IPS/WAF/SIEM 이 도는 호스트.
+#
+# 방화벽 컨테이너가 네 개 망의 게이트웨이 IP 를 각각 하나씩 갖는다. 그래서 다른
+# 호스트의 엔드포인트가 다른 망으로 통신하려면 구조적으로 이 컨테이너를 지난다.
+#
+# ※ macvlan 네트워크의 gateway 선언은 docker IPAM 이 예약해 버린다. 실제 게이트웨이
+#   .1 은 fw 컨테이너가 직접 가져야 하므로, 선언은 쓰지 않는 .254 로 두고 .1 은 fw 에
+#   고정 할당한다. (엔드포인트 호스트에서는 .1 을 그대로 gateway 로 선언한다.)
+
+services:
+  fw:
+    container_name: kt88-fw
+    build: ./fw
+    hostname: fw
+    cap_add: [NET_ADMIN, NET_RAW]
+    sysctls:
+      net.ipv4.ip_forward: "1"
+      # 모든 망이 하나의 물리 L2 를 공유하므로, 리다이렉트를 켜두면 방화벽이
+      # "나 말고 직접 가라"고 알려주어 스스로를 우회시킨다. 표준 하드닝 항목.
+      net.ipv4.conf.all.send_redirects: "0"
+    networks:
+      ext: { ipv4_address: 10.30.10.1 }
+      dmz: { ipv4_address: 10.30.20.1 }
+      int: { ipv4_address: 10.30.30.1 }
+      res: { ipv4_address: 10.30.40.1 }
+      uplink: {}          # WAN — 인터넷 방향. entrypoint 가 여기로 NAT 한다.
+    restart: unless-stopped
+
+networks:
+  # WAN 인터페이스. 유일하게 bridge 드라이버를 쓰는 망 — 인터넷으로 나가는 통로다.
+  uplink:
+    name: kt88-uplink
+    driver: bridge
+
+  ext:
+    name: kt88-ext
+    driver: macvlan
+    driver_opts: { parent: enp1s0 }
+    ipam:
+      config: [{ subnet: 10.30.10.0/24, gateway: 10.30.10.254 }]
+  dmz:
+    name: kt88-dmz
+    driver: macvlan
+    driver_opts: { parent: enp1s0 }
+    ipam:
+      config: [{ subnet: 10.30.20.0/24, gateway: 10.30.20.254 }]
+  int:
+    name: kt88-int
+    driver: macvlan
+    driver_opts: { parent: enp1s0 }
+    ipam:
+      config: [{ subnet: 10.30.30.0/24, gateway: 10.30.30.254 }]
+  res:
+    name: kt88-res
+    driver: macvlan
+    driver_opts: { parent: enp1s0 }
+    ipam:
+      config: [{ subnet: 10.30.40.0/24, gateway: 10.30.40.254 }]

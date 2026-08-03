@@ -1,0 +1,22 @@
+name: kt88-research
+
+# research(192.168.0.231) — 연구망(res) 엔드포인트가 올라가는 호스트.
+# 방화벽 정책상 내부망과 상호 차단되어 있다(샌드박스 격리).
+
+services:
+  res-01:
+    container_name: kt88-res-01
+    image: ubuntu:22.04
+    hostname: res-01
+    command: sleep infinity
+    networks:
+      res: { ipv4_address: 10.30.40.11 }
+    restart: unless-stopped
+
+networks:
+  res:
+    name: kt88-res
+    driver: macvlan
+    driver_opts: { parent: enp1s0 }
+    ipam:
+      config: [{ subnet: 10.30.40.0/24, gateway: 10.30.40.1 }]
