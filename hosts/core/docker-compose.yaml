@@ -172,8 +172,10 @@ services:
     ports:
       - "5601:5601"        # 강사 브라우저 → https://192.168.0.202:5601
     networks:
-      mgmt:  { ipv4_address: 10.30.60.12, aliases: [wazuh.dashboard] }
+      # admin(bridge)이 macvlan 보다 이름순으로 앞서야 포트 publish 가 동작한다.
+      # networks 정의부 주석 참조 — 어기면 조용히 실패한다.
       admin: {}
+      mgmt:  { ipv4_address: 10.30.60.12, aliases: [wazuh.dashboard] }
     restart: unless-stopped
 
   # ╭─ 공격자 — 외부망에서 출발. 학생 실습의 출발점 ────────────────────╮
@@ -237,7 +239,12 @@ networks:
       config: [{ subnet: 10.30.60.0/24, gateway: 10.30.60.254 }]
 
   # 관리자 접근 전용 — 강사가 브라우저로 대시보드를 열기 위한 통로.
-  # macvlan 은 호스트에서 접근이 안 되고 포트 publish 도 안 되므로 bridge 를 함께 쓴다.
+  # macvlan 은 호스트에서 접근이 안 되므로 bridge 를 함께 물린다.
+  #
+  # ※ 이름이 'kt88-admin' 인 것이 중요하다. docker 는 컨테이너가 붙은 네트워크를
+  #   이름순으로 정렬해 첫 번째를 포트 publish 대상으로 삼는다. macvlan 망 이름이
+  #   앞서면 publish 를 에러도 경고도 없이 건너뛴다. 'kt88-admin' 은 app/dmz/ext/
+  #   int/mgmt/res 어느 것보다 앞서므로 안전하다.
   admin:
     name: kt88-admin
     driver: bridge
