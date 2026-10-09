@@ -105,12 +105,13 @@ def test_wazuh_proxy_auth_csrf_and_secret_boundary(operator_console,monkeypatch)
  monkeypatch.setenv('WAZUH_DASHBOARD_URL','https://wazuh.dashboard:5601')
  monkeypatch.setenv('WAZUH_DASHBOARD_PASSWORD','internal-test-only')
  monkeypatch.setattr(dashboard.ssl,'create_default_context',lambda **kw:context)
+ c.cookies.set('wz-token','native-test')
  class NativeStream(httpx.AsyncByteStream):
   async def __aiter__(self):yield b'native console'
  def upstream(request):
   assert request.url.host=='wazuh.dashboard'
   assert request.url.path=='/_kt88/wazuh/app/wz-home'
-  assert 'cookie' not in request.headers
+  assert request.headers.get('cookie')=='wz-token=native-test'
   assert request.headers['authorization'].startswith('Basic ')
   return httpx.Response(200,stream=NativeStream(),headers={'content-security-policy':"script-src 'self'; frame-ancestors 'none'",'set-cookie':'security_authentication=private'})
  monkeypatch.setattr(dashboard.httpx,'AsyncClient',lambda **kw:original(**kw,transport=httpx.MockTransport(upstream)))

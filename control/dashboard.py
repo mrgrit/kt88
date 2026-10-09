@@ -1,6 +1,7 @@
 """Authenticated fixed-origin Wazuh reverse proxy, never an arbitrary URL proxy."""
 import os,ssl,logging
 import httpx
+from http.cookies import SimpleCookie
 from fastapi import APIRouter,Request,HTTPException
 from fastapi.responses import StreamingResponse,RedirectResponse
 from . import auth
@@ -25,13 +26,18 @@ async def dashboard(path:str,request:Request):
  password=secret('WAZUH_DASHBOARD_PASSWORD')
  if not base or not password:raise HTTPException(503,'Wazuh 대시보드 연결이 설정되지 않았습니다.')
  headers={k:v for k,v in request.headers.items() if k.lower() not in HOP}
- # Do not forward platform/browser credentials into the native security console.
+ # Forward only the native plugin's session cookies, never platform credentials.
+ native=SimpleCookie()
+ for name in ('wz-token','wz-api','wz-user'):
+  if name in request.cookies:native[name]=request.cookies[name]
+ if native:headers['cookie']='; '.join(m.OutputString() for m in native.values())
  headers.update({'x-forwarded-proto':'https','x-forwarded-host':request.headers.get('host','')})
  context=ssl.create_default_context(cafile=os.getenv('INDEXER_CA','/certs/root-ca.pem'))
  client=httpx.AsyncClient(verify=context,timeout=90,trust_env=False,follow_redirects=False,auth=(os.getenv('WAZUH_DASHBOARD_USER','admin'),password))
  url=httpx.URL(base+PREFIX+'/'+path).copy_with(query=request.url.query.encode())
  try:
-  upstream=await client.send(client.build_request(request.method,url,headers=headers,content=request.stream()),stream=True)
+  content=None if request.method in ('GET','HEAD') else request.stream()
+  upstream=await client.send(client.build_request(request.method,url,headers=headers,content=content),stream=True)
  except httpx.HTTPError as error:
   logging.getLogger(__name__).warning('Wazuh upstream %s at %s',type(error).__name__,path[:200])
   await client.aclose();raise HTTPException(502,'Wazuh 대시보드가 준비 중이거나 응답하지 않습니다.')
