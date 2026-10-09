@@ -13,7 +13,7 @@ from pathlib import Path
 
 from policy_model import device_revision, firewall_rules, ips_rules
 from telemetry import collect
-from local_rules import digest, validate_text, write_json
+from local_rules import digest, validate_text, write_json, check_signature_ids
 ROLE=os.environ['ROUTER_ROLE'];POL=Path('/policies');proc=None
 applied=None
 
@@ -133,7 +133,9 @@ def policy_snapshot():
 def test_rules(document,local):
     validate_text(local)
     candidate=Path('/opt/validation.rules')
-    candidate.write_text(Path('/var/lib/suricata/rules/suricata.rules').read_text()+'\n'+Path('/opt/ips.rules').read_text()+'\n'+ips_rules(document)+'\n'+local)
+    baseline=Path('/var/lib/suricata/rules/suricata.rules').read_text()+'\n'+Path('/opt/ips.rules').read_text()+'\n'+ips_rules(document)
+    check_signature_ids(baseline,local)
+    candidate.write_text(baseline+'\n'+local)
     try:
         result=subprocess.run(['suricata','-T','--init-errors-fatal','-c','/etc/suricata/suricata.yaml','-S',str(candidate)],text=True,capture_output=True,timeout=60)
         output=result.stdout+'\n'+result.stderr

@@ -248,3 +248,10 @@ def test_native_ips_rule_validation_and_version(operator_console,tmp_path,monkey
  with connect() as db:db.execute("UPDATE users SET role='viewer' WHERE username='admin'")
  assert c.get(url).status_code==200
  assert c.post(url+'/validate',json={'version':c.get(url).json()['version'],'content':''},headers=h).status_code==403
+
+
+def test_native_ips_cannot_override_baseline_with_higher_revision():
+ from security.local_rules import check_signature_ids
+ baseline='alert tcp any any -> any any (msg:"ET"; sid:2000001; rev:1;)'
+ with pytest.raises(ValueError):check_signature_ids(baseline,'alert tcp any any -> any any (sid:2000001; rev:99;)')
+ check_signature_ids(baseline,'alert tcp any any -> any any (msg:"sid:2000001;"; sid:9000001; rev:1;)')

@@ -26,3 +26,16 @@ def atomic(path, content):
 
 def write_json(path, value):
     atomic(path, json.dumps(value, ensure_ascii=False))
+
+
+def check_signature_ids(baseline, local):
+    def ids(text):
+        code = '\n'.join(line for line in text.splitlines() if not line.lstrip().startswith('#'))
+        code = re.sub(r'"(?:\\.|[^"\\])*"', '""', code)
+        return re.findall(r'\bsid\s*:\s*(\d+)\s*;', code)
+    reserved = set(ids(baseline))
+    seen = set()
+    for sid in ids(local):
+        if sid in reserved or sid in seen:
+            raise ValueError('SID '+sid+' 중복: 기본 규칙/간편 정책/다른 사용자 규칙과 겹치지 않는 SID를 사용하세요.')
+        seen.add(sid)
