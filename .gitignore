@@ -1,2 +1,10 @@
-# Wazuh TLS 인증서 — 개인키가 들어 있다. 배포마다 prepare-core.sh 가 새로 만든다.
-hosts/core/siem/certs/
+.env
+.runtime/
+.secrets/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pem
+*.key
+*.sqlite*
+.venv/
