@@ -93,10 +93,11 @@ def start_ips():
         eve=output.get('eve-log')
         if eve:eve['types']=[t for t in eve.get('types',[]) if t!='stats' and not (isinstance(t,dict) and 'stats' in t)]
     parsed['unix-command']={'enabled':True,'filename':'/var/run/suricata-command.socket'}
+    parsed['rule-files']=[f for f in parsed.get('rule-files',[]) if f!='/opt/ips-active.rules']+['/opt/ips-active.rules']
     config.write_text('%YAML 1.1\n---\n'+yaml.safe_dump(parsed,sort_keys=False))
-    run(['suricata','-T','-c',str(config),'-s','/opt/ips-active.rules'])
+    run(['suricata','-T','-c',str(config)])
     Path('/var/log/suricata').mkdir(parents=True,exist_ok=True)
-    return subprocess.Popen(['suricata','-q','0','-c',str(config),'-s','/opt/ips-active.rules','-l','/var/log/suricata'])
+    return subprocess.Popen(['suricata','-q','0','-c',str(config),'-l','/var/log/suricata'])
 
 def terminate(*_):
     if proc:proc.terminate()
@@ -113,7 +114,7 @@ def ips_command(command):
                 data+=chunk
                 try:result=json.loads(data)
                 except ValueError:continue
-                if result.get('return')!='OK':raise RuntimeError('Suricata command failed')
+                if result.get('return')!='OK':raise RuntimeError('Suricata command failed: '+str(result.get('message',''))[:200])
                 return result.get('message')
             raise RuntimeError('Suricata response too large')
         exchange({'version':'0.2'})
@@ -141,7 +142,7 @@ def main():
                     active=Path('/opt/ips-active.rules');old=active.read_text()
                     active.write_text(Path('/opt/ips.rules').read_text()+'\n'+ips_rules(document))
                     try:
-                        run(['suricata','-T','-c','/etc/suricata/suricata.yaml','-s',str(active)])
+                        run(['suricata','-T','-c','/etc/suricata/suricata.yaml','-S',str(active)])
                         ips_command('reload-rules')
                         engine['ruleset']=ips_command('ruleset-stats')
                     except Exception:
