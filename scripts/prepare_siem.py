@@ -52,17 +52,17 @@ def main():
   content=content.replace('</ossec_config>',collection+'</ossec_config>',1);manager_conf.write_text(content)
  manager=compose['services']['wazuh.manager'];manager['volumes'].append(str(Path(args.logs_dir).resolve() if args.logs_dir else ROOT/'.runtime/logs')+':/var/log/kt88:ro')
  local_rules=dest/'kt88-rules.xml'
- local_rules.write_text('<group name="kt88,"><rule id="110001" level="3"><decoded_as>json</decoded_as><field name="component">^fw$</field><description>kt88 firewall blocked packet counter</description></rule><rule id="110002" level="7"><if_sid>110001</if_sid><field name="blocked_packets" type="pcre2">^[1-9][0-9]*$</field><description>kt88 firewall observed blocked packets</description></rule></group>')
+ local_rules.write_text('<group name="kt88,"><rule id="110001" level="0"><decoded_as>json</decoded_as><field name="component">^fw$</field><description>kt88 firewall blocked packet counter</description></rule><rule id="110002" level="7"><if_sid>110001</if_sid><field name="blocked_packets" type="pcre2">^[1-9][0-9]*$</field><description>kt88 firewall observed blocked packets</description></rule><rule id="110010" level="7"><decoded_as>json</decoded_as><field name="audit_data.action.intercepted">^true$</field><description>kt88 WAF blocked a request using OWASP CRS</description></rule></group>')
  manager['volumes'].append(str(local_rules)+':/var/ossec/etc/rules/kt88_rules.xml:ro')
  out.write_text(yaml.safe_dump(compose,sort_keys=False))
  if not args.prepare_only:
   if os.geteuid()!=0:p.error('Run with sudo')
   # bcrypt hashes generated using standard crypt (host python3 <=3.12).
-  import crypt
+  import bcrypt
   users=yaml.safe_load((dest/'config/wazuh_indexer/internal_users.yml').read_text())
-  for name,filename in [('admin','siem_admin_password'),('kibanaserver','siem_dashboard_password')]:users[name]['hash']=crypt.crypt((private/filename).read_text(),crypt.mksalt(crypt.METHOD_BLOWFISH))
+  for name,filename in [('admin','siem_admin_password'),('kibanaserver','siem_dashboard_password')]:users[name]['hash']=bcrypt.hashpw((private/filename).read_text().encode(),bcrypt.gensalt()).decode()
   (dest/'config/wazuh_indexer/internal_users.yml').write_text(yaml.safe_dump(users,sort_keys=False))
   subprocess.run(['sysctl','-w','vm.max_map_count=262144'],check=True)
-  subprocess.run(['docker','compose','-f','generate-indexer-certs.yml','run','--rm','generator'],cwd=dest,check=True)
+  if not (dest/'config/wazuh_indexer_ssl_certs/admin.pem').exists():subprocess.run(['docker','compose','-f','generate-indexer-certs.yml','run','--rm','generator'],cwd=dest,check=True)
  print('Prepared official Wazuh '+VERSION+' with private credentials and no public SIEM ports.')
 if __name__=='__main__':main()
