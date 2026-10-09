@@ -1,5 +1,6 @@
 import hashlib,signal,subprocess,time,os,re
 from pathlib import Path
+from telemetry import collect
 subprocess.run(['ip','route','replace','default','via','10.88.32.1'],check=True)
 config=Path('/policies/internal-sites.caddy')
 for _ in range(30):
@@ -13,6 +14,7 @@ p=subprocess.Popen(['caddy','run','--config',str(base),'--adapter','caddyfile'])
 signal.signal(signal.SIGTERM,lambda *_:p.terminate())
 last=hashlib.sha256(config.read_bytes()).hexdigest()
 while p.poll() is None:
+ collect('edge',extra={'engine':{'name':'Caddy TLS','alive':True}})
  current=hashlib.sha256(config.read_bytes()).hexdigest()
  if current!=last:
   result=subprocess.run(['caddy','reload','--config',str(base),'--adapter','caddyfile'],capture_output=True,text=True)

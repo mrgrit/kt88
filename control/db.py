@@ -26,6 +26,8 @@ def init():
         CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY, role TEXT, status TEXT, started REAL, finished REAL, result TEXT);
         CREATE TABLE IF NOT EXISTS proposals(id INTEGER PRIMARY KEY, kind TEXT, value TEXT, reason TEXT, status TEXT DEFAULT 'pending', actor TEXT, created REAL);
         CREATE TABLE IF NOT EXISTS runtime_state(key TEXT PRIMARY KEY, value TEXT);
+        CREATE TABLE IF NOT EXISTS metrics(timestamp REAL, device TEXT, cpu REAL, memory INTEGER, rx REAL, tx REAL);
+        CREATE INDEX IF NOT EXISTS metrics_device_time ON metrics(device,timestamp);
         ''')
         if not db.execute('SELECT 1 FROM users LIMIT 1').fetchone():
             password = secret('ADMIN_PASSWORD')

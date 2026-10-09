@@ -38,7 +38,7 @@ def main():
   # Narrow change needed for routed Docker bridge path. Do not disable host firewall.
   run('modprobe','br_netfilter')
   run('sysctl','-w','net.bridge.bridge-nf-call-iptables=0')
-  files=['-f','compose.yaml'];services=['fw','ips','edge','waf','control']
+  files=['-f','compose.yaml'];services=['fw','ips','edge','waf','control','host-monitor']
   if not args.without_siem:
    venv=state/'install-venv'
    if not (venv/'bin/python').exists():run(sys.executable,'-m','venv',str(venv))

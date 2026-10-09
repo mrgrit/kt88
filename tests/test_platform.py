@@ -125,3 +125,65 @@ def test_wazuh_proxy_auth_csrf_and_secret_boundary(operator_console,monkeypatch)
  with connect() as db:db.execute("UPDATE users SET role='operator' WHERE username='admin'")
  assert c.get('/_kt88/wazuh/app/wz-home').status_code==403
  c.cookies.clear();assert c.get('/_kt88/wazuh/app/wz-home').status_code==401
+
+def test_device_policy_lifecycle_and_boundary(operator_console,tmp_path,monkeypatch):
+ from control import app as module
+ from control import operations
+ from security.policy_model import firewall_rules,ips_rules,waf_rules
+ from control.db import connect
+ monkeypatch.setattr(module,'POLICIES',tmp_path)
+ c,h=operator_console
+ for device,rule in [
+  ('fw',{'name':'검증 차단','source':'203.0.113.42','port':80,'action':'drop'}),
+  ('ips',{'name':'검증 탐지','source':'203.0.113.42','port':443,'action':'alert'}),
+  ('waf',{'name':'검증 경로','match':'path','value':'/test-private','action':'deny'})]:
+  url='/_kt88/api/devices/'+device+'/policies'
+  version=c.get(url).json()['version'];body={'version':version,'operation':'create','rule':rule}
+  assert c.post(url,json=body).status_code==403
+  preview=c.post(url+'/preview',json=body,headers=h);assert preview.status_code==200,preview.text
+  identifier=preview.json()['after'][-1]['id']
+  r=c.post(url,json=body,headers=h);assert r.status_code==200,r.text
+  assert c.post(url,json=body,headers=h).status_code==409
+  stored=c.get(url).json();assert stored['rules'][-1]['id']==identifier
+  body={'version':stored['version'],'operation':'update','rule_id':identifier,'rule':{**stored['rules'][-1],'enabled':False}}
+  assert c.put(url+'/'+str(identifier),json=body,headers=h).status_code==200
+  assert not c.get(url).json()['rules'][-1]['enabled']
+  body={'version':c.get(url).json()['version'],'operation':'delete','rule_id':identifier}
+  assert c.delete(url+'/'+str(identifier),headers=h).status_code==422
+  assert c.request('DELETE',url+'/'+str(identifier),json=body,headers=h).status_code==200
+  assert c.get(url).json()['rules']==[]
+ # Arbitrary native configuration injection and control-plane blanket blocks fail.
+ url='/_kt88/api/devices/waf/policies'
+ for value in ['/','/_kt88','/x"\nSecRuleEngine Off']:
+  body={'version':c.get(url).json()['version'],'operation':'create','rule':{'name':'bad','match':'path','value':value,'action':'deny'}}
+  assert c.post(url,json=body,headers=h).status_code==422
+ # Legacy API preserves new rules instead of deleting another administrator's entries.
+ url='/_kt88/api/devices/ips/policies';body={'version':c.get(url).json()['version'],'operation':'create','rule':{'name':'preserve','source':'203.0.113.42','port':0,'action':'drop'}}
+ assert c.post(url,json=body,headers=h).status_code==200
+ assert c.put('/_kt88/api/policy',json={'blocked_cidrs':[],'paranoia':2,'inbound_threshold':5},headers=h).status_code==200
+ assert len(c.get(url).json()['rules'])==1
+ with connect() as db:db.execute("UPDATE users SET role='operator' WHERE username='admin'")
+ assert c.get(url).status_code==200
+ assert c.post(url,json=body,headers=h).status_code==403
+ assert c.get('/_kt88/api/devices/not-a-device/policies').status_code==404
+
+def test_monitoring_staleness_and_renderers(tmp_path,monkeypatch):
+ import json,time
+ from control import app as module
+ from control.operations import inventory
+ from security.policy_model import validate_rule,firewall_rules,ips_rules,waf_rules,device_revision
+ monkeypatch.setattr(module,'POLICIES',tmp_path)
+ rule=validate_rule('fw',{'id':1000001,'name':'source allow','action':'accept','source':'203.0.113.4/32','port':443})
+ document={'rules':{'fw':[rule]}}
+ rendered=firewall_rules(document)
+ assert 'ip daddr 10.88.32.80 tcp dport 443' in rendered
+ assert 'accept' in rendered
+ (tmp_path/'policy.json').write_text(json.dumps(document))
+ data={'observed_at':time.time(),'engine':{'alive':True},'applied_revision':device_revision(document,'fw')}
+ (tmp_path/'fw-telemetry.json').write_text(json.dumps(data))
+ assert inventory()[0]['fw']['state']=='healthy'
+ data['observed_at']-=120;(tmp_path/'fw-telemetry.json').write_text(json.dumps(data))
+ assert inventory()[0]['fw']['state']=='stale'
+ assert inventory()[0]['ips']['state']=='unknown'
+ for device,extra in [('fw',{'source':'0.0.0.0/0','action':'accept'}),('ips',{'source':'203.0.113.1;evil','action':'drop'}),('waf',{'match':'user_agent','value':'x";SecRuleEngine Off','action':'deny'})]:
+  with pytest.raises(ValueError):validate_rule(device,{'id':1000002,'name':'invalid',**extra})

@@ -5,19 +5,23 @@ import ipaddress
 import json
 import os
 import signal
+import socket
 import subprocess
 import time
 from pathlib import Path
 
+from policy_model import device_revision, firewall_rules, ips_rules
+from telemetry import collect
 ROLE=os.environ['ROUTER_ROLE'];POL=Path('/policies');proc=None
+applied=None
 
 def run(args,input=None):
-    result=subprocess.run(args,input=input,text=True,capture_output=True)
+    result=subprocess.run(args,input=input,text=True,capture_output=True,timeout=60)
     if result.returncode:raise RuntimeError(result.stderr[-500:])
     return result
 
 def status(state,detail=''):
-    tmp=POL/(ROLE+'-status.tmp');tmp.write_text(json.dumps({'status':state,'updated':time.time(),'detail':detail}));tmp.replace(POL/(ROLE+'-status.json'))
+    tmp=POL/(ROLE+'-status.tmp');tmp.write_text(json.dumps({'status':state,'updated':time.time(),'detail':detail,'applied_revision':applied}));tmp.replace(POL/(ROLE+'-status.json'))
 
 def route():
     if ROLE=='fw':
@@ -25,7 +29,8 @@ def route():
     else:
         run(['ip','route','replace','default','via','10.88.31.1'])
 
-def rules(blocked):
+def rules(blocked,document=None):
+    custom=firewall_rules(document or {})
     entries=('elements = { ' + ', '.join(blocked) + ' };') if blocked else ''
     if ROLE=='fw':
         return f'''flush ruleset
@@ -38,7 +43,8 @@ def rules(blocked):
           }}
           chain forward {{ type filter hook forward priority 0; policy drop;
             ip saddr @blocked counter log prefix "KT88_FW_BLOCK " drop
-            ct state invalid drop
+            {custom}
+            ct state invalid counter drop
             ct state established,related accept
             ip daddr 10.88.32.80 tcp dport {{ 80,443 }} ct state new limit rate 300/second burst 600 packets accept
             ip saddr 10.88.32.80 tcp dport {{ 80,443 }} accept
@@ -68,14 +74,13 @@ def rules(blocked):
       }
     }'''
 
-def apply(blocked):
+def apply(blocked,document=None):
     for value in blocked:
         n=ipaddress.ip_network(value)
         if n.version!=4 or n.prefixlen<8:raise ValueError('Invalid CIDR')
-    text=rules(blocked)
+    text=rules(blocked,document)
     run(['nft','-c','-f','-'],text)
     run(['nft','-f','-'],text)
-    status('applied')
 
 def start_ips():
     # ET Open download is explicit; failure cannot silently become "all rules current".
@@ -87,37 +92,81 @@ def start_ips():
     for output in parsed.get('outputs',[]):
         eve=output.get('eve-log')
         if eve:eve['types']=[t for t in eve.get('types',[]) if t!='stats' and not (isinstance(t,dict) and 'stats' in t)]
+    parsed['unix-command']={'enabled':True,'filename':'/var/run/suricata-command.socket'}
     config.write_text('%YAML 1.1\n---\n'+yaml.safe_dump(parsed,sort_keys=False))
-    run(['suricata','-T','-c',str(config),'-s','/opt/ips.rules'])
+    run(['suricata','-T','-c',str(config),'-s','/opt/ips-active.rules'])
     Path('/var/log/suricata').mkdir(parents=True,exist_ok=True)
-    return subprocess.Popen(['suricata','-q','0','-c',str(config),'-s','/opt/ips.rules','-l','/var/log/suricata'])
+    return subprocess.Popen(['suricata','-q','0','-c',str(config),'-s','/opt/ips-active.rules','-l','/var/log/suricata'])
 
 def terminate(*_):
     if proc:proc.terminate()
     raise SystemExit(0)
 
-signal.signal(signal.SIGTERM,terminate)
-try:
+def ips_command(command):
+    with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as client:
+        client.settimeout(45);client.connect('/var/run/suricata-command.socket')
+        def exchange(value):
+            client.sendall(json.dumps(value).encode()+b'\n');data=b''
+            while len(data)<1024*1024:
+                chunk=client.recv(65536)
+                if not chunk:raise RuntimeError('Suricata socket closed')
+                data+=chunk
+                try:result=json.loads(data)
+                except ValueError:continue
+                if result.get('return')!='OK':raise RuntimeError('Suricata command failed')
+                return result.get('message')
+            raise RuntimeError('Suricata response too large')
+        exchange({'version':'0.2'})
+        return exchange({'command':command})
+
+def main():
+    global proc,applied
+    signal.signal(signal.SIGTERM,terminate)
     route();apply([])
-    if ROLE=='ips':proc=start_ips()
-    last=None
+    if ROLE=='ips':
+        Path('/opt/ips-active.rules').write_text(Path('/opt/ips.rules').read_text())
+        proc=start_ips()
+        for _ in range(60):
+            if Path('/var/run/suricata-command.socket').exists():break
+            time.sleep(1)
+    last=None;last_log=0;engine={}
     while True:
         if proc and proc.poll() is not None:raise RuntimeError('Suricata exited: queue is fail closed')
-        p=POL/'policy.json'
-        raw=p.read_bytes() if p.exists() else b'{"blocked_cidrs":[]}'
-        current=hashlib.sha256(raw).hexdigest()
-        if current!=last:apply(json.loads(raw)['blocked_cidrs']);last=current
+        p=POL/'policy.json';document=json.loads(p.read_text()) if p.exists() else {'blocked_cidrs':[]}
+        current=device_revision(document,ROLE)
+        if current!=last:
+            try:
+                if ROLE=='fw':apply(document.get('blocked_cidrs',[]),document)
+                else:
+                    active=Path('/opt/ips-active.rules');old=active.read_text()
+                    active.write_text(Path('/opt/ips.rules').read_text()+'\n'+ips_rules(document))
+                    try:
+                        run(['suricata','-T','-c','/etc/suricata/suricata.yaml','-s',str(active)])
+                        ips_command('reload-rules')
+                        engine['ruleset']=ips_command('ruleset-stats')
+                    except Exception:
+                        active.write_text(old)
+                        raise
+                applied=current;status('applied')
+            except Exception as error:status('error',str(error)[:400])
+            last=current
+        counters=[]
         if ROLE=='fw':
             rules_json=json.loads(run(['nft','-j','list','ruleset']).stdout)
-            counters=[]
             for item in rules_json.get('nftables',[]):
-                rule=item.get('rule',{})
-                for expr in rule.get('expr',[]):
-                    if 'counter' in expr:counters.append(expr['counter'])
-            if counters and int(time.time()) % 30 < 3:
+                rule=item.get('rule',{});expressions=rule.get('expr',[])
+                for expr in expressions:
+                    if 'counter' in expr:
+                        counters.append({'rule':rule.get('comment','baseline'),**expr['counter'],'action':next((k for e in expressions for k in ('drop','reject','accept') if k in e),'other')})
+            if time.time()-last_log>=30:
                 log=Path('/var/log/kt88/fw.json');log.parent.mkdir(exist_ok=True)
-                with log.open('a') as f:f.write(json.dumps({'component':'fw','event':'blocked_counter','timestamp':datetime.datetime.now(datetime.timezone.utc).isoformat(),'blocked_packets':sum(c.get('packets',0) for c in counters)})+'\n')
+                with log.open('a') as f:f.write(json.dumps({'component':'fw','event':'blocked_counter','timestamp':datetime.datetime.now(datetime.timezone.utc).isoformat(),'blocked_packets':sum(c.get('packets',0) for c in counters if c['action'] in ('drop','reject'))})+'\n')
                 if log.stat().st_size>10*1024*1024:log.replace(log.with_suffix('.json.1'))
+                last_log=time.time()
+        collect(ROLE,extra={'engine':{'name':'nftables' if ROLE=='fw' else 'Suricata','alive':proc is None or proc.poll() is None,**engine},'counters':counters,'applied_revision':applied})
         time.sleep(3)
-except Exception as e:
-    status('error',str(e)[:400]);raise
+
+if __name__=='__main__':
+    try:main()
+    except Exception as error:
+        status('error',str(error)[:400]);raise

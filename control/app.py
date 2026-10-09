@@ -29,7 +29,12 @@ def render_internal_sites():
 async def lifespan(app):
     init();render_internal_sites()
     app.state.http = httpx.AsyncClient(timeout=30, follow_redirects=False, trust_env=False)
+    from .operations import monitor_loop
+    monitor=asyncio.create_task(monitor_loop())
     yield
+    monitor.cancel()
+    try:await monitor
+    except asyncio.CancelledError:pass
     await app.state.http.aclose()
 
 app = FastAPI(title='kt88 Platform API', docs_url='/_kt88/docs', openapi_url='/_kt88/openapi.json', lifespan=lifespan)
@@ -163,11 +168,10 @@ def policy_read():
     return json.loads(p.read_text()) if p.exists() else {'blocked_cidrs':[],'paranoia':2,'inbound_threshold':5}
 
 def policy_write(data):
-    POLICIES.mkdir(parents=True,exist_ok=True)
-    value=data.model_dump();value['blocked_cidrs']=[cidr(c) for c in value['blocked_cidrs']]
-    temp=POLICIES/'policy.tmp';temp.write_text(json.dumps(value));temp.replace(POLICIES/'policy.json')
-    conf=f"SecAction \"id:900000,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level={data.paranoia}\"\nSecAction \"id:900110,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold={data.inbound_threshold},setvar:tx.outbound_anomaly_score_threshold=4\"\n"
-    temp=POLICIES/'waf.tmp';temp.write_text(conf);temp.replace(POLICIES/'waf.conf')
+    from .operations import policy_lock,read_policy,write_policy
+    with policy_lock():
+        value=read_policy();value.update(data.model_dump());value['blocked_cidrs']=[cidr(c) for c in value['blocked_cidrs']]
+        write_policy(value)
 
 @app.get('/_kt88/api/policy')
 def get_policy(request:Request):
@@ -188,10 +192,12 @@ async def health():
     for ep in eps:
         try:
             ip,port,host=target(ep['upstream'])
-            r=await app.state.http.get(f'http://{ip}:{port}/',headers={'Host':host})
+            started=time.monotonic()
+            r=await app.state.http.get(f'http://{ip}:{port}/',headers={'Host':host},timeout=3)
             state='healthy' if r.status_code<500 else 'degraded'
-        except Exception: state='unreachable'
-        checks.append({'name':ep['name'],'domain':ep['domain'],'status':state})
+            latency=round((time.monotonic()-started)*1000,1)
+        except Exception: state='unreachable';latency=None
+        checks.append({'name':ep['name'],'domain':ep['domain'],'upstream':ep['upstream'],'status':state,'latency_ms':latency})
     applied={}
     for name in ('fw','ips','waf'):
         p=POLICIES/(name+'-status.json')
@@ -251,13 +257,15 @@ def console():return FileResponse(STATIC/'index.html')
 
 @app.get('/_kt88/static/{name}')
 def static(name:str):
-    if name not in ('app.js','style.css','datacenter.js','agents.js'):raise HTTPException(404)
+    if name not in ('app.js','style.css','datacenter.js','agents.js','operations.js'):raise HTTPException(404)
     return FileResponse(STATIC/name)
 
 from .agents import router as agent_router
 from .dashboard import router as dashboard_router
+from .operations import router as operations_router
 app.include_router(agent_router)
 app.include_router(dashboard_router)
+app.include_router(operations_router)
 
 # These paths are infrastructure only; never leak to user-controlled upstreams.
 @app.api_route('/_kt88/{rest:path}',methods=['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'])
