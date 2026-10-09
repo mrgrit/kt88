@@ -113,10 +113,12 @@ def test_wazuh_proxy_auth_csrf_and_secret_boundary(operator_console,monkeypatch)
   assert request.url.path=='/_kt88/wazuh/app/wz-home'
   assert request.headers.get('cookie')=='wz-token=native-test'
   assert request.headers['authorization'].startswith('Basic ')
-  return httpx.Response(200,stream=NativeStream(),headers={'content-security-policy':"script-src 'self'; frame-ancestors 'none'",'set-cookie':'security_authentication=private'})
+  return httpx.Response(200,stream=NativeStream(),headers=[('content-security-policy',"script-src 'self'; frame-ancestors 'none'"),('set-cookie','security_authentication=private'),('set-cookie','wz-token=native-test; Path=/')])
  monkeypatch.setattr(dashboard.httpx,'AsyncClient',lambda **kw:original(**kw,transport=httpx.MockTransport(upstream)))
  r=c.get('/_kt88/wazuh/app/wz-home');assert r.status_code==200
- assert 'set-cookie' not in r.headers and "frame-ancestors 'self'" in r.headers['content-security-policy']
+ assert "frame-ancestors 'self'" in r.headers['content-security-policy']
+ cookies=r.headers.get_list('set-cookie');assert len(cookies)==1 and cookies[0].startswith('wz-token=')
+ assert 'Path=/_kt88/wazuh' in cookies[0] and 'HttpOnly' in cookies[0] and 'Secure' in cookies[0] and 'SameSite=Strict' in cookies[0]
  assert c.post('/_kt88/wazuh/app/wz-home').status_code==403
  assert c.post('/_kt88/wazuh/app/wz-home',headers={'Origin':'https://evil.example','osd-xsrf':'true'}).status_code==403
  assert c.post('/_kt88/wazuh/app/wz-home',headers={'Origin':'https://platform.example.internal','osd-xsrf':'true'}).status_code==200

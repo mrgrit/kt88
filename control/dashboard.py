@@ -49,6 +49,12 @@ async def dashboard(path:str,request:Request):
   finally:await upstream.aclose();await client.aclose()
  response=StreamingResponse(stream(),status_code=upstream.status_code)
  response.raw_headers=[(k,v) for k,v in upstream.headers.raw if k.decode().lower() not in {'connection','transfer-encoding','keep-alive','set-cookie','x-frame-options'}]
+ for value in upstream.headers.get_list('set-cookie'):
+  cookies=SimpleCookie();cookies.load(value)
+  for name,morsel in cookies.items():
+   if name not in ('wz-token','wz-api','wz-user'):continue
+   morsel['path']=PREFIX; morsel['secure']=True; morsel['httponly']=True; morsel['samesite']='Strict'
+   response.headers.append('set-cookie',morsel.OutputString())
  # Keep upstream's script policy; embedding is restricted to this console's origin.
  policy=response.headers.get('Content-Security-Policy',"script-src 'self' 'unsafe-eval' 'unsafe-inline'; object-src 'none'")
  policy='; '.join(p.strip() for p in policy.split(';') if p.strip() and not p.strip().startswith('frame-ancestors'))
