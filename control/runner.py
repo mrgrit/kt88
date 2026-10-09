@@ -24,15 +24,16 @@ async def run(role):
    r=await c.get(os.getenv('CONTROL_URL','http://control:8000')+path,headers=headers);r.raise_for_status();evidence=r.json()
    base=os.getenv('LLM_URL','').rstrip('/')
    if not base:raise RuntimeError('Inference model not configured')
+   model_headers={'Host':os.environ['MODEL_HTTP_HOST']} if os.getenv('MODEL_HTTP_HOST') else {}
    tools=[{'type':'function','function':{'name':ROLES[role]['tool'],'description':'Read current bounded operational evidence','parameters':{'type':'object','properties':{},'additionalProperties':False}}}]
    messages=[{'role':'system','content':instructions(role)+'\n개인정보·토큰 출력 금지. 허용된 읽기 도구만 사용. 적용 권한 없음.'},{'role':'user','content':'현재 운영 상태를 확인하고 한국어로 근거·미확인 범위·권장 조치를 보고하세요.'}]
    # First let the model request a bounded tool; server validates exact name/arguments.
-   response=await c.post(base+'/api/chat',json={'model':os.getenv('LLM_MODEL','qwen3:8b'),'messages':messages,'tools':tools,'think':False,'stream':False,'options':{'num_ctx':8192,'num_predict':700,'temperature':0}});response.raise_for_status();message=response.json()['message']
+   response=await c.post(base+'/api/chat',headers=model_headers,json={'model':os.getenv('LLM_MODEL','qwen3:8b'),'messages':messages,'tools':tools,'think':False,'stream':False,'options':{'num_ctx':8192,'num_predict':700,'temperature':0}});response.raise_for_status();message=response.json()['message']
    calls=message.get('tool_calls',[])
    if not calls or len(calls)>2 or any(call.get('function',{}).get('name')!=ROLES[role]['tool'] or call.get('function',{}).get('arguments',{})!={} for call in calls):raise RuntimeError('Model did not request valid read-only tool')
    messages.append(message)
    messages.append({'role':'tool','tool_name':ROLES[role]['tool'],'content':json.dumps(evidence,ensure_ascii=False)[:24000]})
-   response=await c.post(base+'/api/chat',json={'model':os.getenv('LLM_MODEL','qwen3:8b'),'messages':messages,'think':False,'stream':False,'options':{'num_ctx':8192,'num_predict':1000,'temperature':0.1}});response.raise_for_status()
+   response=await c.post(base+'/api/chat',headers=model_headers,json={'model':os.getenv('LLM_MODEL','qwen3:8b'),'messages':messages,'think':False,'stream':False,'options':{'num_ctx':8192,'num_predict':1000,'temperature':0.1}});response.raise_for_status()
    result={'evidence_at':start,'evidence':evidence,'assessment':response.json()['message']['content'][:8000],'authority':'read-only; no changes applied'}
    status='completed'
  except Exception as e:status='error';result={'error_type':type(e).__name__,'message':str(e)[:300] if not isinstance(e,httpx.HTTPError) else 'Operational upstream failed'}
