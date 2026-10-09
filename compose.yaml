@@ -34,7 +34,7 @@ services:
     cap_add: [NET_ADMIN]
     environment:
       INTERNAL_DOMAIN: ${INTERNAL_DOMAIN:-platform.example.internal}
-      ACME_EMAIL: ${ACME_EMAIL:-admin@example.invalid}
+      ACME_EMAIL: ${ACME_EMAIL:-}
     networks:
       dmz: {ipv4_address: 10.88.32.80}
       frontend: {ipv4_address: 10.88.33.80}

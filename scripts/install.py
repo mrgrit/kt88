@@ -29,7 +29,7 @@ def main():
   if os.geteuid()==0:os.chown(f,10001,10001)
  env=ROOT/'.env'
  if not env.exists():
-  env.write_text(f'INTERNAL_DOMAIN={args.internal_domain}\nADMIN_USER={args.admin_user}\nWEB_BIND={args.web_bind}\nHTTP_PORT={args.http_port}\nHTTPS_PORT={args.https_port}\nACME_EMAIL=admin@example.invalid\n')
+  env.write_text(f'INTERNAL_DOMAIN={args.internal_domain}\nADMIN_USER={args.admin_user}\nWEB_BIND={args.web_bind}\nHTTP_PORT={args.http_port}\nHTTPS_PORT={args.https_port}\nACME_EMAIL=\n')
   os.chmod(env,0o600)
  if not args.prepare_only:
   if os.geteuid()!=0:p.error('Run installer with sudo')
