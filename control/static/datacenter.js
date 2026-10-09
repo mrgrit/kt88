@@ -9,9 +9,9 @@ $('office-roster').hidden=floor!=='operations';$('dc-canvas').parentElement.hidd
 $('floor-caption').textContent=floor==='operations'?'운영사무실 · 관제와 에이전트 작업':'전산실 · HTTP/HTTPS 인라인 보안 경로';if(floor==='operations')return;
 canvas.append(svg('text',{x:26,y:27,class:'zone-label',text:'INTERNET / INTERNAL CLIENT → ROUTED SECURITY → SERVICE'}));
 const top=[['client','접속 클라이언트',['HTTP / HTTPS','공개·내부 도메인']],['fw','FW · 방화벽',ips('fw')],['ips','IPS · 침입방지',ips('ips')],['edge','TLS · 인증서',ips('edge')],['waf','WAF · 웹방화벽',ips('waf')],['control','플랫폼 라우터',['10.88.34.2','등록된 서비스로 전달']]];
-for(let i=0;i<5;i++)line(canvas,26+i*208+156,116,26+(i+1)*208,116,['80 / 443','10.88.31/24','10.88.32/24','10.88.33/24','10.88.34/24'][i]);
+for(let i=0;i<5;i++)line(canvas,26+i*208+156,116,26+(i+1)*208,116,['80 / 443','10.88.31.0/24','10.88.32.0/24','10.88.33.0/24','10.88.34.0/24'][i]);
 top.forEach(([id,title,sub],i)=>{const status=state.devices[id]?.state||(id==='control'?state.services[0]?.status==='reachable'?'healthy':'error':'unknown');canvas.append(node(id,title,26+i*208,64,sub.length?sub:['아직 수집된 IP 없음'],status,async()=>{if(['fw','ips','waf','edge'].includes(id))await window.openSecurityDevice(id);else if(id==='control')await load('endpoints');else message('접속 경로: HTTP/HTTPS → FW → IPS → TLS → WAF → 플랫폼 라우터')}))});
-line(canvas,1144,168,1144,264,'10.88.40/24');
+line(canvas,1144,168,1144,264,'10.88.40.0/24');
 const endpoints=state.endpoints;canvas.append(node('endpoints','등록 웹서비스',1066,266,[endpoints.length+'개 도메인',...endpoints.map(e=>e.domain).slice(0,2)],endpoints.length&&endpoints.every(e=>e.status==='healthy')?'healthy':'unknown',()=>load('endpoints')));
 line(canvas,312,168,312,220,'',true);line(canvas,520,168,520,220,'',true);line(canvas,936,168,936,220,'',true);line(canvas,312,220,936,220,'보안 로그 → Wazuh Manager → Indexer',true);line(canvas,624,220,624,266,'',true);
 const siem=state.services.filter(s=>s.name.startsWith('Wazuh'));canvas.append(node('siem','Wazuh SIEM',546,266,['경보 · 검색 · 조사','관리 네트워크 .60/24'],siem.length&&siem.every(s=>s.status==='reachable')?'healthy':'unknown',async()=>{await load('siem');if(role==='admin')window.openWazuh()}));

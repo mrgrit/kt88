@@ -15,7 +15,7 @@ def worker(d):
  return {'id':d['id'],'name':d['name'],'team':d['team'],'runtime':'ollama','model':d['model'],'autonomy':'L1','security_role':d['kind'],'floor':'운영사무실','zone':'management','assets':d['assets'],'loops':['schedule-'+d['id']] if d['enabled'] else [],'enabled':d['enabled']}
 
 def harness():
- return {'defaults':{'constrain':{'permission':{'platform_health':'read','siem_alerts':'read','shell':'deny','security_write':'deny'}},'inform':{'surfaces':['AGENTS.md','.claude/agents/*.md','.agents/skills/*/SKILL.md']},'verify':{'gates':['도구 이름·인자 검증','실행 근거 기록']},'correct':{},'escalate':{'to':'운영자'}},'security':{'roles':{k:{'label':v[0],'tools':[v[1]]} for k,v in agents.KINDS.items()}}}
+ return {'defaults':{'constrain':{'sandbox':{'network':'등록된 운영 조회 경로','filesystem':'표준 역할·연결 스킬 읽기'},'permission':{'platform_health':'read','siem_alerts':'read','shell':'deny','security_write':'deny'}},'inform':{'context':['AGENTS.md','.claude/agents/*.md','.agents/skills/*/SKILL.md']},'verify':{'gates':[{'name':'권한','rule':'도구 이름·인자 검증'},{'name':'증적','rule':'실행 근거 기록'}]},'correct':{'retry':{'max_attempts':1,'on_fail':'오류 기록 후 운영자 검토'}},'escalate':{'to':'운영자','when':['실행 실패','근거 부족','변경 필요']}},'security':{'roles':{k:{'label':v[0],'tools':[v[1]]} for k,v in agents.KINDS.items()}}}
 
 def org():
  value=native.organization();rows,errors=agents.definitions();value=copy.deepcopy(value)
@@ -28,7 +28,7 @@ def org():
 def console():return FileResponse(STATIC/'agentops/index.html')
 @router.get('/static/{name}')
 def static(name:str):
- if name not in ('agentops.js','agentops.css','settings.js','teams.js'):raise HTTPException(404)
+ if name not in ('agentops.js','agentops.css','settings.js','teams.js','console.css'):raise HTTPException(404)
  return FileResponse(STATIC/'agentops'/name)
 @router.get('/api/org')
 def organization():return org()
