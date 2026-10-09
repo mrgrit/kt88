@@ -25,6 +25,9 @@ class Definition(BaseModel):
  enabled:bool=True
  instructions:str=Field(min_length=10,max_length=12000)
  version:str|None=None
+ skills:list[str]=Field(default_factory=list,max_length=20)
+ team:str=Field(default="",max_length=48)
+ assets:list[str]=Field(default_factory=list,max_length=30)
 
 def skill_path(ident):
  if not SLUG.fullmatch(ident):raise HTTPException(422,'ID는 영문 소문자·숫자·하이픈으로 2~48자입니다.')
@@ -33,41 +36,69 @@ def skill_path(ident):
  return p
 
 def read(ident):
- p=skill_path(ident)
- if not p.exists():raise HTTPException(404,'에이전트 정의가 없습니다.')
- if p.stat().st_size>20000:raise HTTPException(422,'스킬 파일이 너무 큽니다.')
- raw=p.read_text();parts=raw.split('---',2)
+ from . import native
+ p=native.path('.claude/agents/'+native.identifier(ident)+'.md')
+ front={}
+ if p.exists():
+  raw=p.read_text();front,instructions=native.split(raw)
+ if 'kt88-kind' not in front.get('metadata',{}):
+  p=skill_path(ident)
+  if not p.exists():raise HTTPException(404,'에이전트 정의가 없습니다.')
+  raw=p.read_text();front,instructions=native.split(raw)
+ meta=front.get('metadata',{});kind=meta.get('kt88-kind',ident)
+ if kind not in KINDS:raise HTTPException(422,'지원하지 않는 보안 직무입니다.')
  try:
-  front=yaml.safe_load(parts[1]);meta=front.get('metadata',{});kind=meta.get('kt88-kind',ident)
-  if kind not in KINDS:raise ValueError()
-  d=Definition(name=meta.get('kt88-display-name',KINDS[kind][0]),description=front['description'],kind=kind,model=meta.get('kt88-model',os.getenv('LLM_MODEL','qwen3:8b')),interval=meta.get('kt88-interval',900),enabled=meta.get('kt88-enabled',True),instructions=parts[2].strip())
- except (ValueError,TypeError,KeyError,IndexError,AttributeError,yaml.YAMLError):raise HTTPException(422,'SKILL.md 형식을 확인하세요.')
- return {'id':ident,**d.model_dump(exclude={'version'}),'version':hashlib.sha256(raw.encode()).hexdigest(),'source':f'.agents/skills/{ident}/SKILL.md','persona':f'.claude/agents/{ident}.md','tool':KINDS[kind][1],'authority':'read-only'}
+  d=Definition(name=meta.get('kt88-display-name',KINDS[kind][0]),description=front['description'],kind=kind,model=meta.get('kt88-model',os.getenv('LLM_MODEL','qwen3:8b')),interval=meta.get('kt88-interval',900),enabled=meta.get('kt88-enabled',True),instructions=instructions,skills=front.get('skills',[ident] if p.name=='SKILL.md' else []),team=meta.get('kt88-team','soc-team' if kind=='soc-triage' else 'systems-team'),assets=meta.get('kt88-assets',[]))
+ except (ValueError,TypeError,KeyError):raise HTTPException(422,'에이전트 정의 형식 오류')
+ return {'id':ident,**d.model_dump(exclude={'version'}),'version':hashlib.sha256(raw.encode()).hexdigest(),'source':str(p.relative_to(WORKSPACE)),'persona':f'.claude/agents/{ident}.md','tool':KINDS[kind][1],'authority':'read-only'}
 
 def definitions():
- rows=[];issues=[]
- base=WORKSPACE/'.agents/skills'
- if base.exists():
-  for p in sorted(base.glob('*/SKILL.md')):
-   try:rows.append(read(p.parent.name))
-   except HTTPException as e:issues.append({'id':p.parent.name,'message':e.detail})
+ from . import native
+ rows=[];issues=[];ids=set()
+ for p in (WORKSPACE/'.claude/agents').glob('*.md'):
+  try:
+   front,_=native.split(p.read_text())
+   if front.get('metadata',{}).get('kt88-kind') and not front.get('metadata',{}).get('kt88-archived'):ids.add(p.stem)
+  except HTTPException:issues.append({'id':p.stem,'message':'페르소나 파일 형식 오류'})
+ for p in (WORKSPACE/'.agents/skills').glob('*/SKILL.md'):
+  try:
+   front,_=native.split(p.read_text())
+   if front.get('metadata',{}).get('kt88-kind'):ids.add(p.parent.name)
+   elif p.parent.name in KINDS:
+    persona=WORKSPACE/'.claude/agents'/f'{p.parent.name}.md'
+    meta=native.split(persona.read_text())[0].get('metadata',{}) if persona.exists() else {}
+    if not meta.get('kt88-kind'):ids.add(p.parent.name)
+  except HTTPException:continue
+ for ident in sorted(ids):
+  try:rows.append(read(ident))
+  except HTTPException as error:issues.append({'id':ident,'message':error.detail})
  return rows,issues
 
 def write(ident,data):
- p=skill_path(ident)
+ from . import native
+ native.identifier(ident)
  if data.model not in models():raise HTTPException(422,'설치된 모델 목록에서 선택하세요.')
+ for name in data.skills:native.skill(name)
+ if data.team and data.team not in {t['id'] for t in native.organization()['teams']['teams']}:raise HTTPException(422,'등록된 팀을 선택하세요.')
  with LOCK:
-  if p.exists() and data.version!=read(ident)['version']:raise HTTPException(409,'정의가 변경되었습니다. 새로고침 후 수정하세요.')
-  if not p.exists() and len(definitions()[0])>=24:raise HTTPException(422,'에이전트는 최대 24개입니다.')
-  meta={'kt88-kind':data.kind,'kt88-display-name':data.name,'kt88-model':data.model,'kt88-interval':data.interval,'kt88-enabled':data.enabled}
-  body='---\n'+yaml.safe_dump({'name':ident,'description':data.description,'metadata':meta},allow_unicode=True,sort_keys=False)+'---\n\n'+data.instructions.strip()+'\n'
-  persona=WORKSPACE/'.claude/agents'/f'{ident}.md'
-  if persona.is_symlink() or not persona.resolve().is_relative_to((WORKSPACE/'.claude/agents').resolve()):raise HTTPException(422,'허용되지 않은 페르소나 경로입니다.')
-  p.parent.mkdir(parents=True,exist_ok=True);persona.parent.mkdir(parents=True,exist_ok=True)
-  text='---\n'+yaml.safe_dump({'name':ident,'description':data.description},allow_unicode=True,sort_keys=False)+'---\n\nAGENTS.md 및 '+f'.agents/skills/{ident}/SKILL.md'+'를 읽고 역할과 보고 형식을 따르세요. 운영 도구 권한은 서버가 결정합니다.\n'
-  tmp=persona.with_suffix('.tmp');tmp.write_text(text);tmp.replace(persona)
-  tmp=p.with_suffix('.tmp');tmp.write_text(body);tmp.replace(p)
- return read(ident)
+  try:existing=read(ident)
+  except HTTPException as error:
+   if error.status_code!=404:raise
+   existing=None
+  if existing and data.version!=existing['version']:raise HTTPException(409,'정의가 변경되었습니다. 새로고침 후 수정하세요.')
+  if not existing and len(definitions()[0])>=24:raise HTTPException(422,'에이전트는 최대 24개입니다.')
+  meta={'kt88-kind':data.kind,'kt88-display-name':data.name,'kt88-model':data.model,'kt88-interval':data.interval,'kt88-enabled':data.enabled,'kt88-team':data.team or ('soc-team' if data.kind=='soc-triage' else 'systems-team'),'kt88-assets':data.assets}
+  body='---\n'+yaml.safe_dump({'name':ident,'description':data.description,'model':'inherit','tools':['Read'],'skills':data.skills,'metadata':meta},allow_unicode=True,sort_keys=False)+'---\n\n'+data.instructions.strip()+'\n'
+  native.write('.claude/agents/'+ident+'.md',body)
+  # Remove legacy agent metadata from the reusable skill while preserving its procedure.
+  legacy=skill_path(ident)
+  if legacy.exists():
+   text=legacy.read_text();front,procedure=native.split(text)
+   if any(k.startswith('kt88-') for k in front.get('metadata',{})):
+    front['metadata']={k:v for k,v in front.get('metadata',{}).items() if not k.startswith('kt88-')}
+    native.write('.agents/skills/'+ident+'/SKILL.md','---\n'+yaml.safe_dump(front,allow_unicode=True,sort_keys=False)+'---\n\n'+procedure+'\n')
+  result=read(ident);native.export_skills();native.export_agent(result)
+ return result
 
 @router.get('/agents')
 def list_agents(request:Request):

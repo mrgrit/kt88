@@ -28,6 +28,8 @@ def render_internal_sites():
 @asynccontextmanager
 async def lifespan(app):
     init();render_internal_sites()
+    from .agents import definitions,write,Definition
+    for definition in definitions()[0]:write(definition['id'],Definition(**definition))
     app.state.http = httpx.AsyncClient(timeout=30, follow_redirects=False, trust_env=False)
     from .operations import monitor_loop
     monitor=asyncio.create_task(monitor_loop())
@@ -48,6 +50,8 @@ async def security_headers(request, call_next):
         response.headers['Cache-Control'] = 'no-store'
     if request.url.path.startswith('/_kt88') and not request.url.path.startswith('/_kt88/wazuh/'):
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
+    if request.url.path.startswith(('/_kt88/agentops/','/_kt88/evidence/')):
+        response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'self'; base-uri 'none'; form-action 'self'"
     return response
 
 class Login(BaseModel):
@@ -229,7 +233,10 @@ def runs(request:Request):
 
 @app.get('/_kt88/agent/health')
 async def agent_health(request:Request):
-    auth.machine(request);return await health()
+    auth.machine(request)
+    from .operations import inventory
+    devices,host=inventory()
+    return {**await health(),'monitoring':{'devices':devices,'host':host}}
 
 @app.post('/_kt88/mcp')
 async def mcp(request:Request):
@@ -263,9 +270,13 @@ def static(name:str):
 from .agents import router as agent_router
 from .dashboard import router as dashboard_router
 from .operations import router as operations_router
+from .agentops import router as agentops_router
+from .evidence import router as evidence_router
 app.include_router(agent_router)
 app.include_router(dashboard_router)
 app.include_router(operations_router)
+app.include_router(agentops_router)
+app.include_router(evidence_router)
 
 # These paths are infrastructure only; never leak to user-controlled upstreams.
 @app.api_route('/_kt88/{rest:path}',methods=['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'])

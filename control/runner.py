@@ -20,18 +20,28 @@ def instructions(definition):
  return policy+'\n\n'+definition['instructions']
 
 async def run(role,ident,job):
- start=time.time();definition=job['definition'];kind=definition['kind'];usage=[]
+ start=time.time();definition=job['definition'];kind=definition['kind'];usage=[];receipts=[];loaded=[];evidence=None
  try:
+  from . import native
+  skill_context=[]
+  for name in definition.get('skills',[]):
+   value=native.skill(name)
+   loaded.append({k:value[k] for k in ('name','path','sha256')})
+   skill_context.append(value['body'])
+  def checkpoint():
+   with connect() as db:db.execute('UPDATE runs SET result=? WHERE id=?',(json.dumps({**job,'usage':usage,'receipts':receipts,'loaded_skills':loaded,'evidence':evidence},ensure_ascii=False),ident))
+  checkpoint()
   token=secret('AGENT_TOKEN');headers={'Authorization':'Bearer '+token}
   async with httpx.AsyncClient(timeout=180,trust_env=False) as c:
    path=KINDS[kind][2]
    if definition['model'] not in models():raise RuntimeError('Model is outside configured allowlist')
    r=await c.get(os.getenv('CONTROL_URL','http://control:8000')+path,headers=headers);r.raise_for_status();evidence=r.json()
+   receipts.append({'type':'tool','tool':KINDS[kind][1],'at':time.time(),'arguments':{},'result':{'status':'observed','evidence':evidence}});checkpoint()
    base=os.getenv('LLM_URL','').rstrip('/')
    if not base:raise RuntimeError('Inference model not configured')
    model_headers={'Host':os.environ['MODEL_HTTP_HOST']} if os.getenv('MODEL_HTTP_HOST') else {}
    tools=[{'type':'function','function':{'name':KINDS[kind][1],'description':'Read current bounded operational evidence','parameters':{'type':'object','properties':{},'additionalProperties':False}}}]
-   messages=[{'role':'system','content':instructions(definition)+'\n개인정보·토큰 출력 금지. 허용된 읽기 도구만 사용. 적용 권한 없음. 시각은 제공한 ISO 문자열 그대로 인용하고 변환하지 말 것. endpoint healthy는 내부 upstream 측정이며 공개 DNS/인증서 상태를 의미하지 않는다. 경보 목록은 표본이므로 전체 경보 구성으로 일반화하지 말 것.'},{'role':'user','content':job['request']}]
+   messages=[{'role':'system','content':instructions(definition)+'\n\n연결 업무 절차:\n'+'\n\n'.join(skill_context)[:16000]+'\n개인정보·토큰 출력 금지. 허용된 읽기 도구만 사용. 적용 권한 없음. 시각은 제공한 ISO 문자열 그대로 인용하고 변환하지 말 것. endpoint healthy는 내부 upstream 측정이며 공개 DNS/인증서 상태를 의미하지 않는다. 경보 목록은 표본이므로 전체 경보 구성으로 일반화하지 말 것.'},{'role':'user','content':job['request']}]
    # First let the model request a bounded tool; server validates exact name/arguments.
    response=await c.post(base+'/api/chat',headers=model_headers,json={'model':definition['model'],'messages':messages,'tools':tools,'think':False,'stream':False,'options':{'num_ctx':8192,'num_predict':700,'temperature':0}});response.raise_for_status();message=response.json()['message'];usage.append({k:response.json().get(k) for k in ('prompt_eval_count','eval_count','total_duration')})
    calls=message.get('tool_calls',[])
@@ -40,9 +50,9 @@ async def run(role,ident,job):
    messages.append({'role':'tool','tool_name':KINDS[kind][1],'content':json.dumps(normalized(evidence),ensure_ascii=False)[:24000]})
    response=await c.post(base+'/api/chat',headers=model_headers,json={'model':definition['model'],'messages':messages,'think':False,'stream':False,'options':{'num_ctx':8192,'num_predict':1000,'temperature':0.1}});response.raise_for_status()
    usage.append({k:response.json().get(k) for k in ('prompt_eval_count','eval_count','total_duration')})
-   result={**job,'usage':usage,'evidence_at':start,'evidence':evidence,'assessment':response.json()['message']['content'][:8000],'authority':'read-only; no changes applied','assessment_status':'draft_requires_review'}
+   result={**job,'usage':usage,'receipts':receipts,'loaded_skills':loaded,'evidence_at':start,'evidence':evidence,'assessment':response.json()['message']['content'][:8000],'authority':'read-only; no changes applied','assessment_status':'draft_requires_review'}
    status='completed'
- except Exception as e:status='error';result={**job,'error_type':type(e).__name__,'message':str(e)[:300] if not isinstance(e,httpx.HTTPError) else 'Operational upstream failed'}
+ except Exception as e:status='error';result={**job,'usage':usage,'receipts':receipts,'loaded_skills':loaded,'evidence':evidence,'error_type':type(e).__name__,'message':str(e)[:300] if not isinstance(e,httpx.HTTPError) else 'Operational upstream failed'}
  with connect() as db:db.execute('UPDATE runs SET status=?,finished=?,result=? WHERE id=?',(status,time.time(),json.dumps(result,ensure_ascii=False),ident))
  audit('agent:'+role,'run_finished',{'run_id':ident,'status':status})
 

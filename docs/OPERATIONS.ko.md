@@ -46,3 +46,15 @@ FW/IPS/WAF 화면은 대시보드, 정책 관리, 로그, 인터페이스·IP·�
 IPS는 [Suricata 공식 규칙 재적용](https://docs.suricata.io/en/suricata-7.0.14/rule-management/rule-reload.html)의 로컬 Unix socket 방식을 사용하며 새 규칙 구문 검사 후 reload 완료를 확인한다. WAF는 Apache 구문 검사 후 graceful reload한다. 실패 시 이전 생성 설정을 복원하고 오류를 표시한다. 커스텀 설정이 기본 CRS나 인라인 경로를 끄지 않는다.
 
 장비 로그는 Wazuh에서 기간·최소 심각도·출발 IP를 필터링하고 총 건수 및 최신 50건을 제공한다. FW는 현재 차단 카운터 집계 로그이므로 패킷별 출발 IP가 없는 항목은 IP 필터에 포함되지 않는다. 전용 SIEM 조회 실패는 0건으로 표시하지 않는다. 호스트 수집기는 `/proc/stat`, `meminfo`, `loadavg`, `uptime` 네 파일만 읽고 외부 포트·Docker socket·호스트 루트 마운트를 사용하지 않는다.
+
+## kt66 에이전트 운영 기능 계승 · kt88 독립 실행
+
+에이전트 운영의 조직 → 팀/KPI → 근무자·R&R → 스킬/루프 → 적용 흐름은 kt66 `agentops/templates/agentops.html`, `agentops/static/agentops.js`, `settings.js`와 CSS를 이식했다. 실행 증적 화면은 kt66 `noc/static/agent-control.*`, `agent-sprites.js`를 이식했다. 원본의 계정 키 입력·교육 문구·시설 실습 참조를 kt88 관리자 세션과 실제 운영 데이터에 맞췄다. 복제한 화면 코드와 API 어댑터는 kt88 저장소 안에 있으며 kt66 서비스·볼륨·경로를 런타임에 참조하지 않는다.
+
+`/_kt88/agentops/`에서 팀 등록/수정/삭제, 근무자 등록/수정/보관, R&R·담당 자산·스킬 연결, 스킬 등록/수정/삭제, 정기 작업 주기/활성 상태와 설정 복원을 관리한다. `/_kt88/evidence/`는 실행 필터·요청·도구 타임라인·실행 당시 권한·파일 읽기 근거·모델 토큰·결과를 조회한다. 보고서만 있는 과거 실행에서 존재하지 않는 계획/파일 접근을 만들어 표시하지 않는다. 기존 2개 역할을 자동 변환하며 운영 기록은 보존한다.
+
+역할 원본은 `.runtime/agent-workspace/.claude/agents/<id>.md`, 업무 절차 원본은 `.agents/skills/<name>/SKILL.md`다. 역할과 스킬을 같은 파일로 취급하지 않는다. Claude용 `.claude/skills/<name>/SKILL.md`, Codex용 `.codex/agents/<id>.toml`, Hermes용 `.hermes/profiles/<id>/config.yaml`, `SOUL.md`, `skills/<name>/SKILL.md`에 반영한다. Codex는 원본 `.agents/skills`를 사용한다. 조직·팀·KPI와 복원 이력은 플랫폼 DB의 운영 데이터이며 별도 독자 에이전트 설정 디렉터리를 만들지 않는다. `AGENTS.md`와 `CLAUDE.md`는 작업공간 공통 지침이다.
+
+형식 근거: [Claude Code subagents](https://code.claude.com/docs/en/sub-agents), [Codex custom agents](https://learn.chatgpt.com/docs/agent-configuration/subagents), [Codex skills](https://learn.chatgpt.com/docs/build-skills), [Hermes profiles](https://hermes-agent.nousresearch.com/docs/user-guide/profiles), [Hermes skills](https://hermes-agent.nousresearch.com/docs/user-guide/features/skills/). Hermes는 해당 디렉터리를 `HERMES_HOME`으로 지정해 프로필을 사용할 수 있다. 외부 CLI의 제공자·접속 환경은 해당 런타임에서 설정한다. 표준 파일 반영과 CLI를 실제 실행했다는 주장은 구분한다. 현재 배포의 자동 업무는 Thor/Ollama 실행기가 이 역할과 연결 스킬을 읽어 실행한다. 연결 스킬의 실제 읽기 해시, 도구 응답, 사용량을 실행 기록에 남긴다.
+
+kt88 단독 설치는 이 관제와 장비 정책, NMS/SMS 수집기를 포함한다. 실제 SIEM과 에이전트 추론을 쓰려면 설치 환경의 SIEM/LLM 설정이 필요하다. real ycdc는 등록된 엔드포인트 중 하나일 뿐이며 플랫폼 기본 설정에 학과 도메인·계정을 넣지 않는다.

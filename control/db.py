@@ -28,6 +28,7 @@ def init():
         CREATE TABLE IF NOT EXISTS runtime_state(key TEXT PRIMARY KEY, value TEXT);
         CREATE TABLE IF NOT EXISTS metrics(timestamp REAL, device TEXT, cpu REAL, memory INTEGER, rx REAL, tx REAL);
         CREATE INDEX IF NOT EXISTS metrics_device_time ON metrics(device,timestamp);
+        CREATE TABLE IF NOT EXISTS config_backups(id INTEGER PRIMARY KEY, path TEXT, content TEXT, created REAL);
         ''')
         if not db.execute('SELECT 1 FROM users LIMIT 1').fetchone():
             password = secret('ADMIN_PASSWORD')

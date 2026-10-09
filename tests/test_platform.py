@@ -80,7 +80,8 @@ def test_native_agent_edit_queue_and_permissions(operator_console,tmp_path,monke
  url='/_kt88/api/agents/test-reviewer'
  assert c.put(url,json=body).status_code==403
  r=c.put(url,json=body,headers=h);assert r.status_code==200,r.text
- assert (tmp_path/'.agents/skills/test-reviewer/SKILL.md').exists()
+ assert (tmp_path/'.codex/agents/test-reviewer.toml').exists()
+ assert (tmp_path/'.hermes/profiles/test-reviewer/SOUL.md').exists()
  assert (tmp_path/'.claude/agents/test-reviewer.md').exists()
  assert c.put(url,json=body,headers=h).status_code==409
  body['version']=r.json()['version'];body['model']='unapproved-model'
@@ -94,6 +95,7 @@ def test_native_agent_edit_queue_and_permissions(operator_console,tmp_path,monke
  assert c.post(url+'/run',json={'request':'조회자 실행 금지'},headers=h).status_code==403
  assert c.put(url,json=body,headers=h).status_code==403
  with pytest.raises(Exception):agents.skill_path('../escape')
+ (tmp_path/'.agents/skills').mkdir(parents=True,exist_ok=True)
  (tmp_path/'.agents/skills/symlink').symlink_to(tmp_path,target_is_directory=True)
  with pytest.raises(Exception):agents.skill_path('symlink')
 
@@ -187,3 +189,31 @@ def test_monitoring_staleness_and_renderers(tmp_path,monkeypatch):
  assert inventory()[0]['ips']['state']=='unknown'
  for device,extra in [('fw',{'source':'0.0.0.0/0','action':'accept'}),('ips',{'source':'203.0.113.1;evil','action':'drop'}),('waf',{'match':'user_agent','value':'x";SecRuleEngine Off','action':'deny'})]:
   with pytest.raises(ValueError):validate_rule(device,{'id':1000002,'name':'invalid',**extra})
+
+def test_inherited_organization_skills_assignments_and_evidence(operator_console,tmp_path,monkeypatch):
+ from control import agents,native
+ from control.db import connect
+ monkeypatch.setattr(agents,'WORKSPACE',tmp_path)
+ c,h=operator_console;base='/_kt88/agentops/api'
+ skill='---\nname: review-proof\ndescription: 검토 절차\n---\n\n확인된 자료와 미확인 범위를 구분하여 보고합니다.\n'
+ r=c.post(base+'/skills',json={'name':'review-proof','content':skill},headers=h);assert r.status_code==200,r.text
+ version=r.json()['sha256']
+ assert c.put(base+'/skills/review-proof',json={'content':skill,'sha256':'stale'},headers=h).status_code==409
+ body={'id':'proof-worker','name':'검증 담당','team':'systems-team','security_role':'platform-health','model':'qwen3:8b','runtime':'ollama','autonomy':'L1'}
+ assert c.post(base+'/worker',json=body,headers=h).status_code==200
+ a=c.get(base+'/assignments/proof-worker').json()
+ r=c.put(base+'/assignments/proof-worker',json={'sha256':a['sha256'],'description':'검증 담당 역할','instructions':'근거를 조회하고 연결된 검토 절차를 사용합니다.','skills':['review-proof'],'assets':['fw'],'loops':[]},headers=h)
+ assert r.status_code==200,r.text
+ assert c.request('DELETE',base+'/skills/review-proof',json={'sha256':version},headers=h).status_code==409
+ assert (tmp_path/'.claude/agents/proof-worker.md').exists()
+ assert (tmp_path/'.claude/skills/review-proof/SKILL.md').read_text()==skill
+ assert (tmp_path/'.hermes/profiles/proof-worker/skills/review-proof/SKILL.md').read_text()==skill
+ assert 'developer_instructions' in (tmp_path/'.codex/agents/proof-worker.toml').read_text()
+ org=c.get(base+'/org').json();assert org['roster']['workers'][0]['id']=='proof-worker'
+ assert c.get(base+'/agent-control/runs?hours=24').status_code==200
+ assert c.get('/_kt88/evidence/').status_code==200
+ with connect() as db:db.execute("UPDATE users SET role='viewer' WHERE username='admin'")
+ assert c.get(base+'/skills').status_code==200
+ assert c.post(base+'/worker',json=body,headers=h).status_code==403
+ assert c.put(base+'/skills/review-proof',json={'content':skill,'sha256':version},headers=h).status_code==403
+ with pytest.raises(Exception):native.path('../outside')
