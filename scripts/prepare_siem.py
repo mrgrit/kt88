@@ -30,6 +30,12 @@ def main():
   if not target.exists():target.write_text(secrets.token_urlsafe(40)+'aA1!')
   os.chmod(target,0o400)
   if os.geteuid()==0:os.chown(target,10001,10001)
+ # The mounted native plugin file takes precedence over container environment.
+ api_conf=dest/'config/wazuh_dashboard/wazuh.yml'
+ api_settings=yaml.safe_load(api_conf.read_text()) or {}
+ api_settings['hosts']=[{'default':{'url':'https://wazuh.manager','port':55000,'username':'wazuh-wui','password':(private/'siem_api_password').read_text(),'run_as':False}}]
+ api_conf.write_text(yaml.safe_dump(api_settings,sort_keys=False));os.chmod(api_conf,0o640)
+ if os.geteuid()==0:os.chown(api_conf,1000,1000)
  # Passwords are local environment settings; never downloaded default credentials.
  compose=yaml.safe_load((dest/'docker-compose.yml').read_text())
  for name,service in compose['services'].items():
