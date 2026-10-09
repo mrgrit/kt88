@@ -1,5 +1,5 @@
 """Authenticated fixed-origin Wazuh reverse proxy, never an arbitrary URL proxy."""
-import os,ssl
+import os,ssl,logging
 import httpx
 from fastapi import APIRouter,Request,HTTPException
 from fastapi.responses import StreamingResponse,RedirectResponse
@@ -32,7 +32,8 @@ async def dashboard(path:str,request:Request):
  url=httpx.URL(base+PREFIX+'/'+path).copy_with(query=request.url.query.encode())
  try:
   upstream=await client.send(client.build_request(request.method,url,headers=headers,content=request.stream()),stream=True)
- except httpx.HTTPError:
+ except httpx.HTTPError as error:
+  logging.getLogger(__name__).warning('Wazuh upstream %s at %s',type(error).__name__,path[:200])
   await client.aclose();raise HTTPException(502,'Wazuh 대시보드가 준비 중이거나 응답하지 않습니다.')
  if request.method not in ('GET','HEAD','OPTIONS'):
   audit(user['username'],'wazuh_request',{'method':request.method,'path':path[:200],'status':upstream.status_code})

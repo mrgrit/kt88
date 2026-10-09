@@ -61,6 +61,7 @@ services:
       DATA_DIR: /data
       AGENT_WORKSPACE: /workspace
       AGENT_MODELS: ${AGENT_MODELS:-qwen3:8b,qwen3:14b}
+      LLM_MODEL: ${LLM_MODEL:-qwen3:8b}
       POLICY_DIR: /policies
       ENDPOINT_CIDRS: 10.88.40.0/24
       INTERNAL_DOMAIN: ${INTERNAL_DOMAIN:-platform.example.internal}
