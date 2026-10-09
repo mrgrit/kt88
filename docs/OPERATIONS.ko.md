@@ -31,9 +31,9 @@ Wazuh 전체 화면은 `/_kt88/wazuh/`에서 최고 관리자 세션으로 접�
 관리자는 정의를 편집하고, 관리자/운영자는 즉시 조사 요청을 등록할 수 있다. 실행마다 지침 버전·요청·실제 조회 근거·모델 사용량·결과를 남긴다. 모델이 호출할 수 있는 도구는 서버가 지정한 상태 조회 또는 경보 조회 하나로 제한하며 지침 편집으로 권한을 늘릴 수 없다. 이식한 kt66의 역할/페르소나/작업/실행근거 흐름에는 교육용 장애 주입이나 임의 셸 권한이 포함되지 않는다.
 
 Wazuh 초기 인덱스 패턴의 `attributes.fields`에는 OS 경로·명령 이름이 들어 있어 CRS 오탐이 발생한다. 로컬 규칙 200003은 `/_kt88/wazuh/api/saved_objects/index-pattern/<id>`의 POST/PUT에서 해당 필드만 검사 대상에서 제외한다. 다른 필드·경로의 CRS 차단은 유지한다. 플랫폼 인증 쿠키는 Wazuh로 전달하지 않으며, Wazuh 자체의 `wz-token`·`wz-api`·`wz-user`만 전달한다. 대시보드 쓰기 요청은 본문 없이 운영자·경로·결과 코드를 감사 기록에 남긴다.
-인덱스 패턴 등록 경로의 JSON 본문 한도는 필드 메타데이터 크기에 맞춰 4 MiB이며, 다른 경로의 128 KiB 비파일 본문 한도는 유지한다. 네이티브 인증 쿠키는 `/_kt88/wazuh` 경로·Secure·HttpOnly·SameSite=Strict로 제한한다.
+인덱스 패턴 등록 경로의 JSON 본문 한도는 필드 메타데이터 크기에 맞춰 4 MiB이며, 일반 경로의 비파일 본문 한도는 2 MiB이다. 네이티브 인증 쿠키는 `/_kt88/wazuh` 경로·Secure·HttpOnly·SameSite=Strict로 제한한다.
 
-Discover의 검색 요청은 하이라이트 `params.body.highlight.fragment_size`에 `2147483647`을 사용한다. CRS 942220이 이 값을 정수 오버플로 공격으로 오인하므로 규칙 200004는 두 네이티브 OpenSearch 검색 경로의 POST에서 그 필드가 해당 값인 경우에만 942220의 검사 대상에서 제외한다. 다른 값·필드·경로와 다른 CRS 규칙은 유지한다. `scripts/verify-discover-waf.py https://platform.example.internal`로 인증 유지와 예외 범위를 재검증한다.
+Discover의 검색 요청은 하이라이트 `params.body.highlight.fragment_size`에 `2147483647`을 사용한다. CRS 942220이 이 값을 정수 오버플로 공격으로 오인하므로 규칙 200004~200006은 두 네이티브 OpenSearch 검색 경로의 POST에서 `params.body.highlight.fragment_size`, `params.body.query.highlight.fragment_size`, `params.body.query.bool.highlight.fragment_size` 중 해당 필드가 그 값인 경우에만 942220의 검사 대상에서 제외한다. 다른 값·필드·경로와 다른 CRS 규칙은 유지한다. `scripts/verify-discover-waf.py https://platform.example.internal`로 인증 유지와 예외 범위를 재검증한다.
 
 ## 네트워크 · 시스템 관제와 장비 정책
 
@@ -41,7 +41,7 @@ Discover의 검색 요청은 하이라이트 `params.body.highlight.fragment_siz
 
 수집 주기는 장비 3초, 호스트/서비스 10초, 화면 15초이다. 45초가 지난 측정은 수집 지연으로 표시한다. 실제 엔진 적용 버전과 원하는 정책 버전이 다르면 적용 대기이며, 저장 성공을 장비 적용 성공으로 표시하지 않는다. 추이 데이터는 SQLite에 24시간 보관하며 최근 1시간의 1분 평균을 조회한다. 컨테이너 CPU 100%는 코어 1개이며, 장비 트래픽은 인터페이스 합계로 호스트 인터넷 사용량과 다르다. nftables 패킷 카운터는 재적용 시 초기화된다.
 
-FW/IPS/WAF 화면은 대시보드, 정책 관리, 로그, 인터페이스·IP·경로 탭으로 구성한다. 관리자만 정책을 등록·수정·중지·삭제할 수 있다. 변경 미리보기 → 버전 충돌 검사 → 저장 → 장비 구문 검사 → 실제 적용 상태를 따른다. 일반 운영자와 감사자는 조회만 가능하다. 기존 기본 규칙은 별도로 표시한다. FW 사용자 규칙은 기존 웹서비스 목적지의 TCP 80/443에 대한 출발 IPv4/CIDR 허용·차단·거부, IPS는 같은 서비스 구간 출발 주소의 탐지·차단, WAF는 출발 IP·경로 접두어·User-Agent의 차단/기록이다. 직접 쉘이나 임의 네이티브 규칙 입력은 제공하지 않는다.
+FW/IPS/WAF 화면은 대시보드, 정책 관리, 로그, 인터페이스·IP·경로 탭으로 구성한다. 관리자만 정책을 등록·수정·중지·삭제할 수 있다. 변경 미리보기 → 버전 충돌 검사 → 저장 → 장비 구문 검사 → 실제 적용 상태를 따른다. 일반 운영자와 감사자는 조회만 가능하다. 기존 기본 규칙은 별도로 표시한다. FW 사용자 규칙은 기존 웹서비스 목적지의 TCP 80/443에 대한 출발 IPv4/CIDR 허용·차단·거부, IPS는 같은 서비스 구간 출발 주소의 탐지·차단, WAF는 출발 IP·경로 접두어·User-Agent의 차단/기록이다. 임의 셸은 제공하지 않는다. IPS에는 별도로 Suricata 전문 편집기가 있으며 `local.rules` 저장·검사·적용과 SID 충돌 검사를 지원한다. 파일 구성과 사용법은 [README의 local.rules 안내](../README.md#suricata-규칙-전문과-localrules)를 따른다.
 
 IPS는 [Suricata 공식 규칙 재적용](https://docs.suricata.io/en/suricata-7.0.14/rule-management/rule-reload.html)의 로컬 Unix socket 방식을 사용하며 새 규칙 구문 검사 후 reload 완료를 확인한다. WAF는 Apache 구문 검사 후 graceful reload한다. 실패 시 이전 생성 설정을 복원하고 오류를 표시한다. 커스텀 설정이 기본 CRS나 인라인 경로를 끄지 않는다.
 
