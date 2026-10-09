@@ -25,6 +25,7 @@ def init():
         CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY, timestamp REAL, actor TEXT, action TEXT, detail TEXT);
         CREATE TABLE IF NOT EXISTS runs(id INTEGER PRIMARY KEY, role TEXT, status TEXT, started REAL, finished REAL, result TEXT);
         CREATE TABLE IF NOT EXISTS proposals(id INTEGER PRIMARY KEY, kind TEXT, value TEXT, reason TEXT, status TEXT DEFAULT 'pending', actor TEXT, created REAL);
+        CREATE TABLE IF NOT EXISTS runtime_state(key TEXT PRIMARY KEY, value TEXT);
         ''')
         if not db.execute('SELECT 1 FROM users LIMIT 1').fetchone():
             password = secret('ADMIN_PASSWORD')

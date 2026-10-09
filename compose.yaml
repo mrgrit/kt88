@@ -59,6 +59,8 @@ services:
       ADMIN_MUST_CHANGE: '1'
       AGENT_TOKEN_FILE: /run/secrets/agent_token
       DATA_DIR: /data
+      AGENT_WORKSPACE: /workspace
+      AGENT_MODELS: ${AGENT_MODELS:-qwen3:8b,qwen3:14b}
       POLICY_DIR: /policies
       ENDPOINT_CIDRS: 10.88.40.0/24
       INTERNAL_DOMAIN: ${INTERNAL_DOMAIN:-platform.example.internal}
@@ -66,7 +68,7 @@ services:
       SITE_VISIBILITY: ${SITE_VISIBILITY:-internal}
       BOOTSTRAP_UPSTREAM: ${BOOTSTRAP_UPSTREAM:-}
     secrets: [admin_password, agent_token]
-    volumes: ['./.runtime/data:/data', './.runtime/policies:/policies']
+    volumes: ['./.runtime/data:/data', './.runtime/policies:/policies', './.runtime/agent-workspace:/workspace']
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     read_only: true

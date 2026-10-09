@@ -10,6 +10,8 @@ def main():
  p=argparse.ArgumentParser();p.add_argument('--prepare-only',action='store_true');p.add_argument('--without-siem',action='store_true');p.add_argument('--internal-domain',default='platform.example.internal');p.add_argument('--web-bind',default='0.0.0.0');p.add_argument('--http-port',default='80');p.add_argument('--https-port',default='443');p.add_argument('--admin-user',default='admin');p.add_argument('--admin-password-file');args=p.parse_args()
  if not re.fullmatch(r'[a-z0-9.-]+\.internal',args.internal_domain):p.error('internal domain must end in .internal')
  state=ROOT/'.runtime';private=ROOT/'.secrets';private.mkdir(exist_ok=True,mode=0o700);os.chmod(private,0o700)
+ from prepare_agent_workspace import prepare
+ prepare(ROOT)
  for directory in ['data','policies','logs/ips','logs/waf','logs/fw']:
   d=state/directory;d.mkdir(parents=True,exist_ok=True)
   if os.geteuid()==0:os.chown(d,10001,10001)

@@ -59,3 +59,66 @@ def test_input_injection():
   with pytest.raises(Exception):domain(value)
  assert cidr('203.0.113.2')=='203.0.113.2/32'
  with pytest.raises(Exception):cidr('0.0.0.0/0')
+
+@pytest.fixture
+def operator_console(client):
+ from control.db import connect
+ with connect() as db:db.execute("UPDATE users SET must_change=0 WHERE username='admin'")
+ headers=signed(client)
+ try:yield client,headers
+ finally:
+  with connect() as db:
+   db.execute("UPDATE users SET role='admin',must_change=1 WHERE username='admin'")
+   db.execute("DELETE FROM runs WHERE role='test-reviewer'")
+
+def test_native_agent_edit_queue_and_permissions(operator_console,tmp_path,monkeypatch):
+ from control import agents
+ from control.db import connect
+ monkeypatch.setattr(agents,'WORKSPACE',tmp_path)
+ c,h=operator_console
+ body={'name':'관제 담당','description':'경보 조사','kind':'soc-triage','model':'qwen3:8b','interval':900,'enabled':True,'instructions':'관찰 사실과 근거, 미확인 범위를 구분하여 보고하세요.'}
+ url='/_kt88/api/agents/test-reviewer'
+ assert c.put(url,json=body).status_code==403
+ r=c.put(url,json=body,headers=h);assert r.status_code==200,r.text
+ assert (tmp_path/'.agents/skills/test-reviewer/SKILL.md').exists()
+ assert (tmp_path/'.claude/agents/test-reviewer.md').exists()
+ assert c.put(url,json=body,headers=h).status_code==409
+ body['version']=r.json()['version'];body['model']='unapproved-model'
+ assert c.put(url,json=body,headers=h).status_code==422
+ r=c.post(url+'/run',json={'request':'최근 경보를 조사하세요.'},headers=h);assert r.status_code==202
+ assert c.post(url+'/run',json={'request':'중복'},headers=h).status_code==409
+ detail=c.get('/_kt88/api/runs/'+str(r.json()['id'])).json()
+ assert detail['result']['definition']['instructions']==body['instructions']
+ with connect() as db:db.execute("UPDATE users SET role='viewer' WHERE username='admin'")
+ assert c.get('/_kt88/api/agents').status_code==200
+ assert c.post(url+'/run',json={'request':'조회자 실행 금지'},headers=h).status_code==403
+ assert c.put(url,json=body,headers=h).status_code==403
+ with pytest.raises(Exception):agents.skill_path('../escape')
+ (tmp_path/'.agents/skills/symlink').symlink_to(tmp_path,target_is_directory=True)
+ with pytest.raises(Exception):agents.skill_path('symlink')
+
+def test_wazuh_proxy_auth_csrf_and_secret_boundary(operator_console,monkeypatch):
+ import httpx,ssl
+ from control import dashboard
+ from control.db import connect
+ c,h=operator_console;original=httpx.AsyncClient;context=ssl.create_default_context()
+ monkeypatch.setenv('WAZUH_DASHBOARD_URL','https://wazuh.dashboard:5601')
+ monkeypatch.setenv('WAZUH_DASHBOARD_PASSWORD','internal-test-only')
+ monkeypatch.setattr(dashboard.ssl,'create_default_context',lambda **kw:context)
+ class NativeStream(httpx.AsyncByteStream):
+  async def __aiter__(self):yield b'native console'
+ def upstream(request):
+  assert request.url.host=='wazuh.dashboard'
+  assert request.url.path=='/_kt88/wazuh/app/wz-home'
+  assert 'cookie' not in request.headers
+  assert request.headers['authorization'].startswith('Basic ')
+  return httpx.Response(200,stream=NativeStream(),headers={'content-security-policy':"script-src 'self'; frame-ancestors 'none'",'set-cookie':'security_authentication=private'})
+ monkeypatch.setattr(dashboard.httpx,'AsyncClient',lambda **kw:original(**kw,transport=httpx.MockTransport(upstream)))
+ r=c.get('/_kt88/wazuh/app/wz-home');assert r.status_code==200
+ assert 'set-cookie' not in r.headers and "frame-ancestors 'self'" in r.headers['content-security-policy']
+ assert c.post('/_kt88/wazuh/app/wz-home').status_code==403
+ assert c.post('/_kt88/wazuh/app/wz-home',headers={'Origin':'https://evil.example','osd-xsrf':'true'}).status_code==403
+ assert c.post('/_kt88/wazuh/app/wz-home',headers={'Origin':'https://platform.example.internal','osd-xsrf':'true'}).status_code==200
+ with connect() as db:db.execute("UPDATE users SET role='operator' WHERE username='admin'")
+ assert c.get('/_kt88/wazuh/app/wz-home').status_code==403
+ c.cookies.clear();assert c.get('/_kt88/wazuh/app/wz-home').status_code==401

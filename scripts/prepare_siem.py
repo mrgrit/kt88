@@ -20,6 +20,11 @@ def main():
      if relative.is_absolute() or '..' in relative.parts:raise RuntimeError('Unsafe upstream archive')
      target=dest/relative;target.parent.mkdir(parents=True,exist_ok=True);target.write_bytes(archive.extractfile(member).read())
  private=ROOT/'.secrets';private.mkdir(exist_ok=True,mode=0o700)
+ dashboard_conf=dest/'config/wazuh_dashboard/opensearch_dashboards.yml'
+ settings=yaml.safe_load(dashboard_conf.read_text())
+ settings['server.basePath']='/_kt88/wazuh'
+ settings['server.rewriteBasePath']=True
+ dashboard_conf.write_text(yaml.safe_dump(settings,sort_keys=False))
  for name in ['siem_admin_password','siem_api_password','siem_dashboard_password','siem_reader_password','security_writer_password']:
   target=private/name
   if not target.exists():target.write_text(secrets.token_urlsafe(40)+'aA1!')

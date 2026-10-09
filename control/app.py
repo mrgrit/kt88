@@ -41,6 +41,7 @@ async def security_headers(request, call_next):
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     if request.url.path.startswith('/_kt88'):
         response.headers['Cache-Control'] = 'no-store'
+    if request.url.path.startswith('/_kt88') and not request.url.path.startswith('/_kt88/wazuh/'):
         response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
     return response
 
@@ -250,8 +251,13 @@ def console():return FileResponse(STATIC/'index.html')
 
 @app.get('/_kt88/static/{name}')
 def static(name:str):
-    if name not in ('app.js','style.css'):raise HTTPException(404)
+    if name not in ('app.js','style.css','datacenter.js','agents.js'):raise HTTPException(404)
     return FileResponse(STATIC/name)
+
+from .agents import router as agent_router
+from .dashboard import router as dashboard_router
+app.include_router(agent_router)
+app.include_router(dashboard_router)
 
 # These paths are infrastructure only; never leak to user-controlled upstreams.
 @app.api_route('/_kt88/{rest:path}',methods=['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'])

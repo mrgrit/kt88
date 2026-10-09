@@ -6,7 +6,7 @@ from .security import digest, secret
 
 COOKIE = '__Host-kt88'
 
-def user(request: Request, roles=('admin','operator','viewer')):
+def user(request: Request, roles=('admin','operator','viewer'), *, csrf=True):
     token = request.cookies.get(COOKIE, '')
     with connect() as db:
         row = db.execute('SELECT u.*,s.csrf,s.expires FROM sessions s JOIN users u ON u.id=s.user_id WHERE token=?', (digest(token),)).fetchone()
@@ -16,7 +16,7 @@ def user(request: Request, roles=('admin','operator','viewer')):
         raise HTTPException(403, '이 작업에 대한 권한이 없습니다.')
     if row['must_change'] and request.url.path not in ('/_kt88/api/password','/_kt88/api/me','/_kt88/api/logout'):
         raise HTTPException(403, '초기 비밀번호를 먼저 변경하세요.')
-    if request.method not in ('GET','HEAD','OPTIONS'):
+    if csrf and request.method not in ('GET','HEAD','OPTIONS'):
         origin = request.headers.get('origin', '')
         # No wildcard or forwarded-host trust. Browser writes require exact site origin.
         expected = 'https://' + request.headers.get('host', '')

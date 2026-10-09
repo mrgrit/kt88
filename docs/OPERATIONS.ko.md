@@ -19,3 +19,13 @@ sudo ./setup.sh
 SIEM은 Wazuh 공식 단일 노드 Docker 배포를 `scripts/prepare_siem.py`로 준비하고 `-f compose.yaml -f .runtime/siem/compose.overlay.yaml`로 내부 management 네트워크에 연결한다. 운영자는 콘솔에서 제한된 경보를 조회한다. 전체 분석은 loopback 바인딩된 Wazuh dashboard를 SSH 포워딩해 이용한다. 공개 웹페이지에 Wazuh 관리자 인증서를 제공하지 않는다.
 
 백업은 플랫폼 SQLite online backup, 보안 정책, Wazuh snapshot, .env/.secrets를 암호화해 보관하고 별도 호스트에서 복구 확인한다. `docker compose down -v`는 운영 데이터 삭제이므로 사용하지 않는다. 인증정보와 runtime은 Git에 포함하지 않는다.
+
+## 데이터센터와 에이전트 운영실
+
+`/_kt88/`의 데이터센터는 기존 kt66의 입체 투영·랙·근무석 상호작용을 전산실/운영사무실 두 층으로 옮긴 구성도이다. 실제 센서가 없는 온도·전력·가상 장애를 표시하지 않는다. 장비를 클릭하면 FW/WAF 정책 창, IPS 조사 안내, 웹서비스 관리 또는 SIEM을 연다. 운영사무실의 담당자를 클릭하면 해당 에이전트 정의와 작업 요청을 연다.
+
+Wazuh 전체 화면은 `/_kt88/wazuh/`에서 최고 관리자 세션으로 접근한다. 경계 FW/IPS/WAF와 플랫폼 인증을 통과한 뒤 고정된 내부 대시보드로 프록시하며, 서비스 인증정보는 브라우저에 제공하지 않는다. 일반 운영자/감사자는 기존 SIEM 경보 조회를 사용한다. 전체 대시보드는 관리 기능을 포함하므로 최고 관리자 권한과 같게 취급한다. 별도 외부 SIEM 포트를 열지 않는다. 공식 [basePath 설정](https://github.com/wazuh/wazuh-dashboard/blob/main/config/opensearch_dashboards.yml)을 사용한다.
+
+에이전트 화면에서 이름·담당 역할·모델·실행 주기·지침을 저장하면 `.runtime/agent-workspace/.agents/skills/<id>/SKILL.md`와 `.claude/agents/<id>.md`에 기록한다. 이 디렉터리는 실행기의 표준 작업공간으로 마운트되며 `AGENTS.md`와 `CLAUDE.md`도 포함한다. 재설치는 편집한 정의를 덮어쓰지 않는다. 중지는 다음 실행부터 적용하며 진행 중인 조사는 완료한다. 실행기 모델 목록은 `AGENT_MODELS`에 설치된 모델만 등록한다.
+
+관리자는 정의를 편집하고, 관리자/운영자는 즉시 조사 요청을 등록할 수 있다. 실행마다 지침 버전·요청·실제 조회 근거·모델 사용량·결과를 남긴다. 모델이 호출할 수 있는 도구는 서버가 지정한 상태 조회 또는 경보 조회 하나로 제한하며 지침 편집으로 권한을 늘릴 수 없다. 이식한 kt66의 역할/페르소나/작업/실행근거 흐름에는 교육용 장애 주입이나 임의 셸 권한이 포함되지 않는다.
