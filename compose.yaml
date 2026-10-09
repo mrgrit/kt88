@@ -77,13 +77,13 @@ services:
       timeout: 5s
       retries: 5
 networks:
-  ext: {ipam: {config: [{subnet: 10.88.30.0/24, gateway: 10.88.30.254}]}}
-  pipe: {internal: true, ipam: {config: [{subnet: 10.88.31.0/24, gateway: 10.88.31.254}]}}
-  dmz: {internal: true, ipam: {config: [{subnet: 10.88.32.0/24, gateway: 10.88.32.254}]}}
-  frontend: {internal: true, ipam: {config: [{subnet: 10.88.33.0/24}]}}
-  backend: {internal: true, ipam: {config: [{subnet: 10.88.34.0/24}]}}
-  apps: {internal: true, ipam: {config: [{subnet: 10.88.40.0/24}]}}
-  management: {internal: true, ipam: {config: [{subnet: 10.88.60.0/24}]}}
+  ext: {ipam: {config: [{subnet: 10.88.30.0/24, ip_range: 10.88.30.128/25, gateway: 10.88.30.254}]}}
+  pipe: {internal: true, ipam: {config: [{subnet: 10.88.31.0/24, ip_range: 10.88.31.128/25, gateway: 10.88.31.254}]}}
+  dmz: {internal: true, ipam: {config: [{subnet: 10.88.32.0/24, ip_range: 10.88.32.128/25, gateway: 10.88.32.254}]}}
+  frontend: {internal: true, ipam: {config: [{subnet: 10.88.33.0/24, ip_range: 10.88.33.128/25}]}}
+  backend: {internal: true, ipam: {config: [{subnet: 10.88.34.0/24, ip_range: 10.88.34.128/25}]}}
+  apps: {internal: true, ipam: {config: [{subnet: 10.88.40.0/24, ip_range: 10.88.40.128/25}]}}
+  management: {internal: true, ipam: {config: [{subnet: 10.88.60.0/24, ip_range: 10.88.60.128/25}]}}
 volumes: {caddy_data: {}, caddy_config: {}}
 secrets:
   admin_password: {file: ./.secrets/admin_password}

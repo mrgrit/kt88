@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Run against private indexer with admin mTLS; provision separated machine roles."""
-import argparse,json,os,secrets
+import argparse,json,os,secrets,ssl
 from pathlib import Path
 import httpx
 
 def main():
  p=argparse.ArgumentParser();p.add_argument('--url',required=True);p.add_argument('--ca',required=True);p.add_argument('--cert',required=True);p.add_argument('--key',required=True);p.add_argument('--secrets-dir',required=True);args=p.parse_args()
  directory=Path(args.secrets_dir)
- with httpx.Client(base_url=args.url,verify=args.ca,cert=(args.cert,args.key),timeout=30,trust_env=False) as c:
+ context=ssl.create_default_context(cafile=args.ca);context.load_cert_chain(args.cert,args.key)
+ with httpx.Client(base_url=args.url,verify=context,timeout=30,trust_env=False) as c:
   def put(path,value):r=c.put(path,json=value);r.raise_for_status()
   roles={
    'analytics-writer':{'cluster_permissions':['cluster_composite_ops'],'index_permissions':[{'index_patterns':['ycdc-analytics-*'],'allowed_actions':['crud','create_index','indices:admin/delete','indices:data/write/delete/byquery','indices:admin/mappings/put']}]},

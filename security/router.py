@@ -87,7 +87,7 @@ def start_ips():
     for output in parsed.get('outputs',[]):
         eve=output.get('eve-log')
         if eve:eve['types']=[t for t in eve.get('types',[]) if t!='stats' and not (isinstance(t,dict) and 'stats' in t)]
-    config.write_text(yaml.safe_dump(parsed,sort_keys=False))
+    config.write_text('%YAML 1.1\n---\n'+yaml.safe_dump(parsed,sort_keys=False))
     run(['suricata','-T','-c',str(config),'-s','/opt/ips.rules'])
     Path('/var/log/suricata').mkdir(parents=True,exist_ok=True)
     return subprocess.Popen(['suricata','-q','0','-c',str(config),'-s','/opt/ips.rules','-l','/var/log/suricata'])
