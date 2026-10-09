@@ -24,7 +24,9 @@ def main():
    put('/_plugins/_security/api/roles/'+name,role)
    put('/_plugins/_security/api/internalusers/'+name,{'password':path.read_text().strip(),'backend_roles':[name]})
    put('/_plugins/_security/api/rolesmapping/'+name,{'backend_roles':[name],'users':[name]})
-  put('/_index_template/'+args.analytics_prefix,{'index_patterns':[pattern],'template':{'settings':{'number_of_shards':1,'number_of_replicas':0},'mappings':{'dynamic':'strict','properties':{'id':{'type':'keyword'},'visitor':{'type':'keyword'},'timestamp':{'type':'date'},'name':{'type':'keyword'},'page':{'type':'keyword'},'album':{'type':'integer'},'attribution':{'type':'object','enabled':False}}}}})
+  put('/_index_template/'+args.analytics_prefix,{'index_patterns':[pattern],'template':{'settings':{'number_of_shards':1,'number_of_replicas':0},'mappings':{'dynamic':'strict','properties':{'id':{'type':'keyword'},'visitor':{'type':'keyword'},'timestamp':{'type':'date'},'name':{'type':'keyword'},'page':{'type':'keyword'},'album':{'type':'integer'},'attribution':{'type':'object','enabled':False},'campaign':{'type':'keyword'},'source':{'type':'keyword'},'medium':{'type':'keyword'},'referrer_origin':{'type':'keyword'},'attribution_channel':{'type':'keyword'}}}}})
+  existing=c.get('/'+pattern+'/_mapping');existing.raise_for_status()
+  for index in existing.json():put('/'+index+'/_mapping',{'properties':{k:{'type':'keyword'} for k in ('campaign','source','medium','referrer_origin','attribution_channel')}})
   policy={'policy':{'description':'Delete analytics after 365 days','default_state':'active','states':[{'name':'active','actions':[],'transitions':[{'state_name':'delete','conditions':{'min_index_age':'365d'}}]},{'name':'delete','actions':[{'delete':{}}],'transitions':[]}],'ism_template':[{'index_patterns':[pattern],'priority':101}]}}
   path='/_plugins/_ism/policies/'+args.analytics_prefix+'-retention'
   current=c.get(path);params={}
