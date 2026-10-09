@@ -58,7 +58,7 @@ async function renderPolicies(root){policy=await api('devices/'+device+'/policie
 }
 async function renderLocalRules(root){
  const saved=await api('devices/ips/local-rules'),box=el('section'),editor=el('textarea'),result=el('pre',saved.apply?.detail||'규칙을 입력한 후 구문 검사를 실행하세요.','report'),buttons=el('div',undefined,'button-row');
- editor.id='ips-local-rules';editor.setAttribute('aria-label','local.rules 전문');editor.rows=18;editor.spellcheck=false;editor.value=saved.content;editor.readOnly=role!=='admin';editor.style.cssText='width:100%;font-family:monospace;white-space:pre;overflow:auto';
+ editor.id='ips-local-rules';editor.setAttribute('aria-label','local.rules 전문');editor.rows=18;editor.spellcheck=false;editor.value=saved.content;editor.readOnly=role!=='admin';editor.className='native-rules-editor';
  editor.placeholder='alert http any any -> $HOME_NET any (msg:"Local HTTP event"; flow:established,to_server; http.uri; content:"/example"; sid:9000001; rev:1;)';
  box.append(el('h3','Suricata 사용자 규칙 · local.rules'),el('p','규칙 전문을 붙여넣거나 수정하세요. 삭제할 규칙은 해당 줄을 지우고, 일시 중지는 줄 앞에 #을 붙이세요. 빈 파일을 적용하면 사용자 전문 규칙을 모두 제거합니다.'),el('p','ET Open 및 기본 보호 규칙과 별도로 저장합니다. SID는 중복 없이 지정하세요 (권장: 9000000 이상). 최대 256 KiB. lua/luajit/dataset 파일 접근 규칙은 콘솔에서 관리합니다.'),editor);
  const check=el('button','구문 검사'),apply=el('button','검사한 local.rules 저장·적용'),reload=el('button','다시 불러오기','secondary');check.id='validate-local-rules';apply.id='apply-local-rules';apply.disabled=true;check.disabled=role!=='admin';let valid=null;

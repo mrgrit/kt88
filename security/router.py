@@ -126,6 +126,10 @@ def policy_snapshot():
     with (POL/'policy.lock').open('a') as lock:
         fcntl.flock(lock,fcntl.LOCK_SH)
         p=POL/'policy.json';document=json.loads(p.read_text()) if p.exists() else {'blocked_cidrs':[]}
+        document.setdefault('blocked_cidrs',[])
+        document.setdefault('paranoia',2);document.setdefault('inbound_threshold',5)
+        document.setdefault('rules',{})
+        for device in ('fw','ips','waf'):document['rules'].setdefault(device,[])
         path=POL/'local.rules';local=path.read_text() if path.exists() else ''
         if digest(local)!=document.get('local_rules_sha256',digest('')):raise RuntimeError('local.rules content differs from saved policy revision')
         return document,local

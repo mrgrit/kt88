@@ -255,3 +255,19 @@ def test_native_ips_cannot_override_baseline_with_higher_revision():
  baseline='alert tcp any any -> any any (msg:"ET"; sid:2000001; rev:1;)'
  with pytest.raises(ValueError):check_signature_ids(baseline,'alert tcp any any -> any any (sid:2000001; rev:99;)')
  check_signature_ids(baseline,'alert tcp any any -> any any (msg:"sid:2000001;"; sid:9000001; rev:1;)')
+
+def test_native_validation_on_fresh_install(operator_console,tmp_path,monkeypatch):
+ import importlib.util,sys
+ from control import operations as ops
+ monkeypatch.setattr(ops,'directory',lambda:tmp_path)
+ monkeypatch.setenv('ROUTER_ROLE','ips')
+ monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1]/'security'))
+ spec=importlib.util.spec_from_file_location('test_ips_worker',Path(__file__).resolve().parents[1]/'security/router.py')
+ worker=importlib.util.module_from_spec(spec);spec.loader.exec_module(worker)
+ monkeypatch.setattr(worker,'POL',tmp_path)
+ checked=[];monkeypatch.setattr(worker,'test_rules',lambda doc,text:checked.append(text))
+ c,h=operator_console;url='/_kt88/api/devices/ips/local-rules'
+ saved=c.get(url).json();job=c.post(url+'/validate',json={'version':saved['version'],'content':'# empty initial rules\n'},headers=h).json()
+ document,_=worker.policy_snapshot();worker.process_validation(document)
+ assert c.get(url+'/validation/'+job['id']).json()['status']=='valid'
+ assert checked==['# empty initial rules\n']
