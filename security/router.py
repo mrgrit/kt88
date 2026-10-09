@@ -1,5 +1,6 @@
 """Narrow privileged component: only generated routes and validated CIDR sets."""
 import hashlib
+import datetime
 import ipaddress
 import json
 import os
@@ -81,7 +82,12 @@ def start_ips():
     if not Path('/var/lib/suricata/rules/suricata.rules').exists():raise RuntimeError('Build image with ET Open rules first')
     config=Path('/etc/suricata/suricata.yaml')
     text=config.read_text().replace('HOME_NET: "[192.168.0.0/16,10.0.0.0/8,172.16.0.0/12]"','HOME_NET: "[10.88.32.0/24]"')
-    config.write_text(text)
+    import yaml
+    parsed=yaml.safe_load(text)
+    for output in parsed.get('outputs',[]):
+        eve=output.get('eve-log')
+        if eve:eve['types']=[t for t in eve.get('types',[]) if t!='stats' and not (isinstance(t,dict) and 'stats' in t)]
+    config.write_text(yaml.safe_dump(parsed,sort_keys=False))
     run(['suricata','-T','-c',str(config),'-s','/opt/ips.rules'])
     Path('/var/log/suricata').mkdir(parents=True,exist_ok=True)
     return subprocess.Popen(['suricata','-q','0','-c',str(config),'-s','/opt/ips.rules','-l','/var/log/suricata'])
@@ -101,6 +107,17 @@ try:
         raw=p.read_bytes() if p.exists() else b'{"blocked_cidrs":[]}'
         current=hashlib.sha256(raw).hexdigest()
         if current!=last:apply(json.loads(raw)['blocked_cidrs']);last=current
+        if ROLE=='fw':
+            rules_json=json.loads(run(['nft','-j','list','ruleset']).stdout)
+            counters=[]
+            for item in rules_json.get('nftables',[]):
+                rule=item.get('rule',{})
+                for expr in rule.get('expr',[]):
+                    if 'counter' in expr:counters.append(expr['counter'])
+            if counters and int(time.time()) % 30 < 3:
+                log=Path('/var/log/kt88/fw.json');log.parent.mkdir(exist_ok=True)
+                with log.open('a') as f:f.write(json.dumps({'component':'fw','event':'blocked_counter','timestamp':datetime.datetime.now(datetime.timezone.utc).isoformat(),'blocked_packets':sum(c.get('packets',0) for c in counters)})+'\n')
+                if log.stat().st_size>10*1024*1024:log.replace(log.with_suffix('.json.1'))
         time.sleep(3)
 except Exception as e:
     status('error',str(e)[:400]);raise

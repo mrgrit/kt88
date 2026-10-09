@@ -17,7 +17,7 @@ services:
     ports:
       - '${WEB_BIND:-0.0.0.0}:${HTTP_PORT:-80}:80'
       - '${WEB_BIND:-0.0.0.0}:${HTTPS_PORT:-443}:443'
-    volumes: ['./.runtime/policies:/policies']
+    volumes: ['./.runtime/policies:/policies', './.runtime/logs/fw:/var/log/kt88']
   ips:
     <<: *base
     build: {context: '.', dockerfile: security/router.Dockerfile}

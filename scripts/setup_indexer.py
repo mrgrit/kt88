@@ -17,6 +17,7 @@ def main():
   for name,role in roles.items():
    filename={'analytics-writer':'indexer_password','soc-reader':'siem_reader_password','security-writer':'security_writer_password'}[name];path=directory/filename
    if not path.exists() or not path.read_text().strip():path.write_text(secrets.token_urlsafe(40));os.chmod(path,0o400)
+   if os.geteuid()==0:os.chown(path,10001,10001)
    put('/_plugins/_security/api/roles/'+name,role)
    put('/_plugins/_security/api/internalusers/'+name,{'password':path.read_text().strip(),'backend_roles':[name]})
    put('/_plugins/_security/api/rolesmapping/'+name,{'backend_roles':[name],'users':[name]})

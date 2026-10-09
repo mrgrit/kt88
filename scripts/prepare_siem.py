@@ -7,7 +7,7 @@ ROOT=Path(__file__).resolve().parents[1]
 VERSION='v4.14.8'
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--prepare-only',action='store_true');args=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--prepare-only',action='store_true');p.add_argument('--logs-dir');args=p.parse_args()
  dest=ROOT/'.runtime/siem';dest.mkdir(parents=True,exist_ok=True)
  if not (dest/'generate-indexer-certs.yml').exists():
   with urllib.request.urlopen('https://github.com/wazuh/wazuh-docker/archive/refs/tags/'+VERSION+'.tar.gz') as r, tempfile.TemporaryFile() as f:
@@ -43,6 +43,18 @@ def main():
  compose['networks']={'management':{'internal':True,'ipam':{'config':[{'subnet':'10.88.60.0/24'}]}}}
  compose.pop('networks',None)
  out=dest/'compose.overlay.yaml';out.write_text(yaml.safe_dump(compose,sort_keys=False));os.chmod(out,0o600)
+ manager_conf=dest/'config/wazuh_cluster/wazuh_manager.conf'
+ content=manager_conf.read_text()
+ if 'kt88 operational collection' not in content:
+  collection='<!-- kt88 operational collection -->\n'
+  for file in ['ips/eve.json','waf/modsec_audit.log','fw/fw.json']:
+   collection+='<localfile><log_format>json</log_format><location>/var/log/kt88/'+file+'</location></localfile>\n'
+  content=content.replace('</ossec_config>',collection+'</ossec_config>',1);manager_conf.write_text(content)
+ manager=compose['services']['wazuh.manager'];manager['volumes'].append(str(Path(args.logs_dir).resolve() if args.logs_dir else ROOT/'.runtime/logs')+':/var/log/kt88:ro')
+ local_rules=dest/'kt88-rules.xml'
+ local_rules.write_text('<group name="kt88,"><rule id="110001" level="3"><decoded_as>json</decoded_as><field name="component">^fw$</field><description>kt88 firewall blocked packet counter</description></rule><rule id="110002" level="7"><if_sid>110001</if_sid><field name="blocked_packets" type="pcre2">^[1-9][0-9]*$</field><description>kt88 firewall observed blocked packets</description></rule></group>')
+ manager['volumes'].append(str(local_rules)+':/var/ossec/etc/rules/kt88_rules.xml:ro')
+ out.write_text(yaml.safe_dump(compose,sort_keys=False))
  if not args.prepare_only:
   if os.geteuid()!=0:p.error('Run with sudo')
   # bcrypt hashes generated using standard crypt (host python3 <=3.12).
