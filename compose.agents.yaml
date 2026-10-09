@@ -19,6 +19,7 @@ services:
       DATA_DIR: /data
       AGENT_WORKSPACE: /workspace
       LLM_URL: ${LLM_URL:-}
+      MODEL_HTTP_HOST: ${MODEL_HTTP_HOST:-}
       LLM_MODEL: ${LLM_MODEL:-qwen3:8b}
       AGENT_INTERVAL: '900'
     secrets: [admin_password, agent_token]

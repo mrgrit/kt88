@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """One-command installer. Run as root; --prepare-only for validation without deployment."""
-import argparse,getpass,json,os,re,secrets,subprocess,sys
+import argparse,getpass,json,os,re,secrets,subprocess,sys,time,shutil
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 
 def run(*args):subprocess.run(args,cwd=ROOT,check=True)
 
 def main():
- p=argparse.ArgumentParser();p.add_argument('--prepare-only',action='store_true');p.add_argument('--internal-domain',default='platform.example.internal');p.add_argument('--web-bind',default='0.0.0.0');p.add_argument('--http-port',default='80');p.add_argument('--https-port',default='443');p.add_argument('--admin-user',default='admin');p.add_argument('--admin-password-file');args=p.parse_args()
+ p=argparse.ArgumentParser();p.add_argument('--prepare-only',action='store_true');p.add_argument('--without-siem',action='store_true');p.add_argument('--internal-domain',default='platform.example.internal');p.add_argument('--web-bind',default='0.0.0.0');p.add_argument('--http-port',default='80');p.add_argument('--https-port',default='443');p.add_argument('--admin-user',default='admin');p.add_argument('--admin-password-file');args=p.parse_args()
  if not re.fullmatch(r'[a-z0-9.-]+\.internal',args.internal_domain):p.error('internal domain must end in .internal')
  state=ROOT/'.runtime';private=ROOT/'.secrets';private.mkdir(exist_ok=True,mode=0o700);os.chmod(private,0o700)
  for directory in ['data','policies','logs/ips','logs/waf','logs/fw']:
@@ -36,8 +36,28 @@ def main():
   # Narrow change needed for routed Docker bridge path. Do not disable host firewall.
   run('modprobe','br_netfilter')
   run('sysctl','-w','net.bridge.bridge-nf-call-iptables=0')
-  run('docker','compose','config','--quiet')
-  run('docker','compose','up','-d','--build','--wait')
+  files=['-f','compose.yaml'];services=['fw','ips','edge','waf','control']
+  if not args.without_siem:
+   venv=state/'install-venv'
+   if not (venv/'bin/python').exists():run(sys.executable,'-m','venv',str(venv))
+   run(str(venv/'bin/pip'),'install','--quiet','PyYAML==6.0.3','bcrypt==5.0.0')
+   run(str(venv/'bin/python'),str(ROOT/'scripts/prepare_siem.py'))
+   certs=state/'siem/config/wazuh_indexer_ssl_certs';(state/'certs').mkdir(exist_ok=True);shutil.copyfile(certs/'root-ca.pem',state/'certs/root-ca.pem');os.chmod(state/'certs/root-ca.pem',0o644)
+   text=env.read_text()
+   if 'INDEXER_URL=' not in text:env.write_text(text+'INDEXER_URL=https://wazuh.indexer:9200\n')
+   files+=['-f','compose.agents.yaml','-f',str(state/'siem/compose.overlay.yaml')];services+=['wazuh.indexer','wazuh.manager','wazuh.dashboard']
+   if re.search(r'^LLM_URL=.+',env.read_text(),re.M):services+=['operation-agents']
+  run('docker','compose',*files,'config','--quiet')
+  run('docker','compose',*files,'up','-d','--build','--wait',*services)
+  if not args.without_siem:
+   for attempt in range(24):
+    try:
+     run('docker','run','--rm','--network','kt88_management','--user','0','--entrypoint','python','-v',str(ROOT/'scripts/setup_indexer.py')+':/setup.py:ro','-v',str(certs)+':/admin-certs:ro','-v',str(private)+':/output','kt88-control','/setup.py','--url','https://wazuh.indexer:9200','--ca','/admin-certs/root-ca.pem','--cert','/admin-certs/admin.pem','--key','/admin-certs/admin-key.pem','--secrets-dir','/output')
+     break
+    except subprocess.CalledProcessError:
+     if attempt==23:raise
+     time.sleep(5)
+   run('docker','compose',*files,'restart','control')
   run('sysctl','-w','net.bridge.bridge-nf-call-iptables=0')
   override=Path('/etc/systemd/system/docker.service.d/kt88-network.conf');override.parent.mkdir(parents=True,exist_ok=True)
   override.write_text('[Service]\nExecStartPost=/usr/sbin/sysctl -w net.bridge.bridge-nf-call-iptables=0\n')
