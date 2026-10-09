@@ -36,6 +36,8 @@ def init():
         if upstream:
             db.execute('INSERT OR IGNORE INTO endpoints(name,domain,upstream,visibility,created) VALUES(?,?,?,?,?)',
                        ('Primary website', os.getenv('SITE_DOMAIN', 'example.internal'), upstream, os.getenv('SITE_VISIBILITY', 'internal'), time.time()))
+            internal=os.getenv('INTERNAL_DOMAIN','platform.example.internal')
+            db.execute('INSERT OR IGNORE INTO endpoints(name,domain,upstream,visibility,created) VALUES(?,?,?,?,?)',('Internal website',internal,upstream,'internal',time.time()))
 
 def audit(actor, action, detail):
     with connect() as db:

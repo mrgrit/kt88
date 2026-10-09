@@ -16,9 +16,18 @@ from .security import domain, target, cidr, digest, password_verify, password_ha
 STATIC = Path(__file__).parent / 'static'
 POLICIES = Path(os.getenv('POLICY_DIR','/policies'))
 
+def render_internal_sites():
+    internal=os.getenv('INTERNAL_DOMAIN','platform.example.internal')
+    with connect() as db:domains=[r[0] for r in db.execute("SELECT domain FROM endpoints WHERE enabled=1 AND visibility='internal'") if r[0]!=internal]
+    blocks=[]
+    for value in domains:
+        host=domain(value)
+        blocks.append('https://'+host+' {\n tls internal\n reverse_proxy waf:8080 {\n  header_up X-Forwarded-For {remote_host}\n  header_up X-Forwarded-Proto https\n  header_up -Forwarded\n  header_up -X-Real-IP\n }\n}\n')
+    POLICIES.mkdir(parents=True,exist_ok=True);temp=POLICIES/'internal-sites.tmp';temp.write_text('\n'.join(blocks));temp.replace(POLICIES/'internal-sites.caddy')
+
 @asynccontextmanager
 async def lifespan(app):
-    init()
+    init();render_internal_sites()
     app.state.http = httpx.AsyncClient(timeout=30, follow_redirects=False, trust_env=False)
     yield
     await app.state.http.aclose()
@@ -127,12 +136,14 @@ def add_endpoint(data: Endpoint, request: Request):
     with connect() as db:
         if db.execute('SELECT 1 FROM endpoints WHERE domain=?',(host,)).fetchone(): raise HTTPException(409,'이미 등록된 도메인입니다.')
         cur=db.execute('INSERT INTO endpoints(name,domain,upstream,visibility,created) VALUES(?,?,?,?,?)',(data.name,host,data.upstream,data.visibility,time.time()))
+    render_internal_sites()
     audit(u['username'],'endpoint_added',{'domain':host,'upstream':data.upstream});return {'id':cur.lastrowid,'ok':True}
 
 @app.delete('/_kt88/api/endpoints/{endpoint_id}')
 def remove_endpoint(endpoint_id:int,request:Request):
     u=auth.user(request,('admin',))
     with connect() as db: db.execute('DELETE FROM endpoints WHERE id=?',(endpoint_id,))
+    render_internal_sites()
     audit(u['username'],'endpoint_removed',{'id':endpoint_id});return {'ok':True}
 
 @app.get('/_kt88/internal/tls-allow')

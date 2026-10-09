@@ -38,7 +38,7 @@ services:
     networks:
       dmz: {ipv4_address: 10.88.32.80}
       frontend: {ipv4_address: 10.88.33.80}
-    volumes: [caddy_data:/data, caddy_config:/config]
+    volumes: [caddy_data:/data, caddy_config:/config, ./.runtime/policies:/policies]
   waf:
     <<: *base
     build: {context: '.', dockerfile: security/waf.Dockerfile}

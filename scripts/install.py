@@ -22,6 +22,7 @@ def main():
   os.chmod(f,0o400)
   if os.geteuid()==0:os.chown(f,10001,10001)
  policies=state/'policies'
+ if not (policies/'internal-sites.caddy').exists():(policies/'internal-sites.caddy').write_text('')
  if not (policies/'policy.json').exists():(policies/'policy.json').write_text(json.dumps({'blocked_cidrs':[],'paranoia':2,'inbound_threshold':5}))
  if not (policies/'waf.conf').exists():(policies/'waf.conf').write_text('SecAction "id:900000,phase:1,pass,nolog,t:none,setvar:tx.paranoia_level=2"\nSecAction "id:900110,phase:1,pass,nolog,t:none,setvar:tx.inbound_anomaly_score_threshold=5,setvar:tx.outbound_anomaly_score_threshold=4"\n')
  for f in policies.iterdir():

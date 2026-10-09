@@ -1,5 +1,5 @@
 {
-    admin off
+    admin 127.0.0.1:2019
     email {$ACME_EMAIL}
     on_demand_tls {
         ask http://control:8000/_kt88/internal/tls-allow
@@ -31,3 +31,5 @@ https:// {
         header_up -X-Real-IP
     }
 }
+
+import /policies/internal-sites.caddy
