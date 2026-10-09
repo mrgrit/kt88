@@ -1,5 +1,5 @@
 """Bounded operation runner using native repository instructions and read-only tools."""
-import asyncio,json,os,time
+import asyncio,json,os,time,datetime
 from pathlib import Path
 import httpx
 from .db import connect,init,audit
@@ -7,6 +7,12 @@ from .security import secret
 
 WORKSPACE=Path(os.getenv('AGENT_WORKSPACE','/workspace'))
 ROLES={'platform-health':{'skill':'platform-health','tool':'platform_health'},'soc-triage':{'skill':'soc-triage','tool':'siem_alerts'}}
+
+def normalized(value):
+ if isinstance(value,dict):
+  return {k:datetime.datetime.fromtimestamp(v,datetime.timezone.utc).isoformat() if k in ('updated','started','finished','evidence_at') and isinstance(v,(int,float)) else normalized(v) for k,v in value.items()}
+ if isinstance(value,list):return [normalized(v) for v in value]
+ return value
 
 def instructions(role):
  # Read only standard locations; user content cannot choose a filesystem path.
@@ -26,15 +32,15 @@ async def run(role):
    if not base:raise RuntimeError('Inference model not configured')
    model_headers={'Host':os.environ['MODEL_HTTP_HOST']} if os.getenv('MODEL_HTTP_HOST') else {}
    tools=[{'type':'function','function':{'name':ROLES[role]['tool'],'description':'Read current bounded operational evidence','parameters':{'type':'object','properties':{},'additionalProperties':False}}}]
-   messages=[{'role':'system','content':instructions(role)+'\n개인정보·토큰 출력 금지. 허용된 읽기 도구만 사용. 적용 권한 없음.'},{'role':'user','content':'현재 운영 상태를 확인하고 한국어로 근거·미확인 범위·권장 조치를 보고하세요.'}]
+   messages=[{'role':'system','content':instructions(role)+'\n개인정보·토큰 출력 금지. 허용된 읽기 도구만 사용. 적용 권한 없음. 시각은 제공한 ISO 문자열 그대로 인용하고 변환하지 말 것. endpoint healthy는 내부 upstream 측정이며 공개 DNS/인증서 상태를 의미하지 않는다. 경보 목록은 표본이므로 전체 경보 구성으로 일반화하지 말 것.'},{'role':'user','content':'현재 운영 상태를 확인하고 한국어로 근거·미확인 범위·권장 조치를 보고하세요.'}]
    # First let the model request a bounded tool; server validates exact name/arguments.
    response=await c.post(base+'/api/chat',headers=model_headers,json={'model':os.getenv('LLM_MODEL','qwen3:8b'),'messages':messages,'tools':tools,'think':False,'stream':False,'options':{'num_ctx':8192,'num_predict':700,'temperature':0}});response.raise_for_status();message=response.json()['message']
    calls=message.get('tool_calls',[])
    if not calls or len(calls)>2 or any(call.get('function',{}).get('name')!=ROLES[role]['tool'] or call.get('function',{}).get('arguments',{})!={} for call in calls):raise RuntimeError('Model did not request valid read-only tool')
    messages.append(message)
-   messages.append({'role':'tool','tool_name':ROLES[role]['tool'],'content':json.dumps(evidence,ensure_ascii=False)[:24000]})
+   messages.append({'role':'tool','tool_name':ROLES[role]['tool'],'content':json.dumps(normalized(evidence),ensure_ascii=False)[:24000]})
    response=await c.post(base+'/api/chat',headers=model_headers,json={'model':os.getenv('LLM_MODEL','qwen3:8b'),'messages':messages,'think':False,'stream':False,'options':{'num_ctx':8192,'num_predict':1000,'temperature':0.1}});response.raise_for_status()
-   result={'evidence_at':start,'evidence':evidence,'assessment':response.json()['message']['content'][:8000],'authority':'read-only; no changes applied'}
+   result={'evidence_at':start,'evidence':evidence,'assessment':response.json()['message']['content'][:8000],'authority':'read-only; no changes applied','assessment_status':'draft_requires_review'}
    status='completed'
  except Exception as e:status='error';result={'error_type':type(e).__name__,'message':str(e)[:300] if not isinstance(e,httpx.HTTPError) else 'Operational upstream failed'}
  with connect() as db:db.execute('UPDATE runs SET status=?,finished=?,result=? WHERE id=?',(status,time.time(),json.dumps(result,ensure_ascii=False),ident))
