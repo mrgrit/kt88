@@ -11,12 +11,13 @@ HOP={'host','connection','keep-alive','transfer-encoding','upgrade','proxy-autho
 
 @router.get(PREFIX)
 def slash(request:Request):
- auth.user(request,('admin',));return RedirectResponse(PREFIX+'/',status_code=307)
+ auth.user(request,('admin',));return RedirectResponse(PREFIX+'/app/wz-home',status_code=307)
 
 @router.api_route(PREFIX+'/{path:path}',methods=['GET','POST','PUT','PATCH','DELETE','HEAD','OPTIONS'])
 async def dashboard(path:str,request:Request):
  # Native dashboard uses its own XSRF header. Exact Origin is additionally required.
  auth.user(request,('admin',),csrf=False)
+ if not path:return RedirectResponse(PREFIX+'/app/wz-home',status_code=307)
  if request.method not in ('GET','HEAD','OPTIONS'):
   if request.headers.get('origin')!='https://'+request.headers.get('host','') or not (request.headers.get('osd-xsrf') or request.headers.get('kbn-xsrf')):raise HTTPException(403,'Wazuh 요청 출처 검증 실패')
  base=os.getenv('WAZUH_DASHBOARD_URL','').rstrip('/')

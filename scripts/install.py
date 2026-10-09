@@ -52,6 +52,7 @@ def main():
   run('docker','compose',*files,'config','--quiet')
   run('docker','compose',*files,'up','-d','--build','--wait',*services)
   if not args.without_siem:
+   run('docker','compose',*files,'restart','wazuh.dashboard')
    for attempt in range(24):
     try:
      run('docker','run','--rm','--network','kt88_management','--user','0','--entrypoint','python','-v',str(ROOT/'scripts/setup_indexer.py')+':/setup.py:ro','-v',str(certs)+':/admin-certs:ro','-v',str(private)+':/output','kt88-control','/setup.py','--url','https://wazuh.indexer:9200','--ca','/admin-certs/root-ca.pem','--cert','/admin-certs/admin.pem','--key','/admin-certs/admin-key.pem','--secrets-dir','/output')
