@@ -1,0 +1,33 @@
+services:
+  control:
+    environment:
+      INDEXER_URL: ${INDEXER_URL:-}
+      INDEXER_CA: /certs/root-ca.pem
+      SIEM_READER_USER: soc-reader
+      SIEM_READER_PASSWORD_FILE: /run/secrets/siem_reader_password
+    secrets: [siem_reader_password]
+    volumes: ['./.runtime/certs:/certs:ro']
+  operation-agents:
+    build: {context: '.', dockerfile: control/Dockerfile}
+    restart: unless-stopped
+    command: [python, -m, control.runner]
+    networks: [backend, management, models]
+    environment:
+      ADMIN_USER: ${ADMIN_USER:-admin}
+      ADMIN_PASSWORD_FILE: /run/secrets/admin_password
+      AGENT_TOKEN_FILE: /run/secrets/agent_token
+      DATA_DIR: /data
+      AGENT_WORKSPACE: /workspace
+      LLM_URL: ${LLM_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-qwen3:8b}
+      AGENT_INTERVAL: '900'
+    secrets: [admin_password, agent_token]
+    volumes: ['./.runtime/data:/data', './AGENTS.md:/workspace/AGENTS.md:ro', './.agents:/workspace/.agents:ro']
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    read_only: true
+    tmpfs: [/tmp]
+networks:
+  models: {internal: true}
+secrets:
+  siem_reader_password: {file: ./.secrets/siem_reader_password}

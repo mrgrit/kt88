@@ -1,0 +1,33 @@
+{
+    admin off
+    email {$ACME_EMAIL}
+    on_demand_tls {
+        ask http://control:8000/_kt88/internal/tls-allow
+    }
+    servers {
+        protocols h1 h2
+    }
+}
+http:// {
+    redir https://{host}{uri} permanent
+}
+https://{$INTERNAL_DOMAIN} {
+    tls internal
+    reverse_proxy waf:8080 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+        header_up -Forwarded
+        header_up -X-Real-IP
+    }
+}
+https:// {
+    tls {
+        on_demand
+    }
+    reverse_proxy waf:8080 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto https
+        header_up -Forwarded
+        header_up -X-Real-IP
+    }
+}

@@ -1,0 +1,3 @@
+# Explicit operational drops. ET Open supplies broader detection coverage.
+drop tcp any any -> any 80 (msg:"KT88 explicit IPS verification"; flow:to_server,established; content:"X-KT88-IPS-Test|3a| block"; nocase; sid:9900001; rev:1;)
+drop tcp any any -> any 80 (msg:"KT88 obvious path traversal"; flow:to_server,established; content:"GET "; depth:4; content:"/../../etc/passwd"; distance:0; sid:9900002; rev:1;)
