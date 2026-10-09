@@ -32,3 +32,5 @@ Wazuh 전체 화면은 `/_kt88/wazuh/`에서 최고 관리자 세션으로 접�
 
 Wazuh 초기 인덱스 패턴의 `attributes.fields`에는 OS 경로·명령 이름이 들어 있어 CRS 오탐이 발생한다. 로컬 규칙 200003은 `/_kt88/wazuh/api/saved_objects/index-pattern/<id>`의 POST/PUT에서 해당 필드만 검사 대상에서 제외한다. 다른 필드·경로의 CRS 차단은 유지한다. 플랫폼 인증 쿠키는 Wazuh로 전달하지 않으며, Wazuh 자체의 `wz-token`·`wz-api`·`wz-user`만 전달한다. 대시보드 쓰기 요청은 본문 없이 운영자·경로·결과 코드를 감사 기록에 남긴다.
 인덱스 패턴 등록 경로의 JSON 본문 한도는 필드 메타데이터 크기에 맞춰 4 MiB이며, 다른 경로의 128 KiB 비파일 본문 한도는 유지한다. 네이티브 인증 쿠키는 `/_kt88/wazuh` 경로·Secure·HttpOnly·SameSite=Strict로 제한한다.
+
+Discover의 검색 요청은 하이라이트 `params.body.highlight.fragment_size`에 `2147483647`을 사용한다. CRS 942220이 이 값을 정수 오버플로 공격으로 오인하므로 규칙 200004는 두 네이티브 OpenSearch 검색 경로의 POST에서 그 필드가 해당 값인 경우에만 942220의 검사 대상에서 제외한다. 다른 값·필드·경로와 다른 CRS 규칙은 유지한다. `scripts/verify-discover-waf.py https://platform.example.internal`로 인증 유지와 예외 범위를 재검증한다.
