@@ -1,5 +1,6 @@
 """Narrow privileged component: only generated routes and validated CIDR sets."""
 import hashlib
+import fcntl
 import datetime
 import ipaddress
 import json
@@ -12,6 +13,7 @@ from pathlib import Path
 
 from policy_model import device_revision, firewall_rules, ips_rules
 from telemetry import collect
+from local_rules import digest, validate_text, write_json
 ROLE=os.environ['ROUTER_ROLE'];POL=Path('/policies');proc=None
 applied=None
 
@@ -93,7 +95,7 @@ def start_ips():
         eve=output.get('eve-log')
         if eve:eve['types']=[t for t in eve.get('types',[]) if t!='stats' and not (isinstance(t,dict) and 'stats' in t)]
     parsed['unix-command']={'enabled':True,'filename':'/var/run/suricata-command.socket'}
-    parsed['rule-files']=[f for f in parsed.get('rule-files',[]) if f!='/opt/ips-active.rules']+['/opt/ips-active.rules']
+    parsed['rule-files']=[f for f in parsed.get('rule-files',[]) if f not in ('/opt/ips-active.rules','/opt/local.rules')]+['/opt/ips-active.rules','/opt/local.rules']
     config.write_text('%YAML 1.1\n---\n'+yaml.safe_dump(parsed,sort_keys=False))
     run(['suricata','-T','-c',str(config)])
     Path('/var/log/suricata').mkdir(parents=True,exist_ok=True)
@@ -120,12 +122,48 @@ def ips_command(command):
         exchange({'version':'0.2'})
         return exchange({'command':command})
 
+def policy_snapshot():
+    with (POL/'policy.lock').open('a') as lock:
+        fcntl.flock(lock,fcntl.LOCK_SH)
+        p=POL/'policy.json';document=json.loads(p.read_text()) if p.exists() else {'blocked_cidrs':[]}
+        path=POL/'local.rules';local=path.read_text() if path.exists() else ''
+        if digest(local)!=document.get('local_rules_sha256',digest('')):raise RuntimeError('local.rules content differs from saved policy revision')
+        return document,local
+
+def test_rules(document,local):
+    validate_text(local)
+    candidate=Path('/opt/validation.rules')
+    candidate.write_text(Path('/var/lib/suricata/rules/suricata.rules').read_text()+'\n'+Path('/opt/ips.rules').read_text()+'\n'+ips_rules(document)+'\n'+local)
+    try:
+        result=subprocess.run(['suricata','-T','--init-errors-fatal','-c','/etc/suricata/suricata.yaml','-S',str(candidate)],text=True,capture_output=True,timeout=60)
+        output=result.stdout+'\n'+result.stderr
+        if result.returncode or 'duplicate signature' in output.lower():
+            raise ValueError(output[-5000:])
+    finally:candidate.unlink(missing_ok=True)
+
+def process_validation(document):
+    job_path=POL/'local-rules-job.json'
+    if not job_path.exists():return
+    job=json.loads(job_path.read_text());result_path=POL/'local-rules-result.json'
+    if result_path.exists() and json.loads(result_path.read_text()).get('id')==job['id']:return
+    result={'id':job['id'],'sha256':job['sha256'],'updated':time.time()}
+    try:
+        from policy_model import revision
+        if revision(document)!=job['version']:raise ValueError('정책이 변경되었습니다. 다시 검사하세요.')
+        if time.time()-job['created']>120:raise ValueError('검사 요청이 만료되었습니다.')
+        test_rules(document,job['content'])
+        result.update(status='valid',detail='ET Open · 기본 규칙 · 사용자 정책 · local.rules 통합 검사 통과')
+    except Exception as error:result.update(status='invalid',detail=str(error)[-5000:])
+    result['updated']=time.time();write_json(result_path,result)
+
 def main():
     global proc,applied
     signal.signal(signal.SIGTERM,terminate)
     route();apply([])
     if ROLE=='ips':
-        Path('/opt/ips-active.rules').write_text(Path('/opt/ips.rules').read_text())
+        document,local=policy_snapshot()
+        Path('/opt/ips-active.rules').write_text(Path('/opt/ips.rules').read_text()+'\n'+ips_rules(document))
+        Path('/opt/local.rules').write_text(local)
         proc=start_ips()
         for _ in range(60):
             if Path('/var/run/suricata-command.socket').exists():break
@@ -133,20 +171,25 @@ def main():
     last=None;last_log=0;engine={}
     while True:
         if proc and proc.poll() is not None:raise RuntimeError('Suricata exited: queue is fail closed')
-        p=POL/'policy.json';document=json.loads(p.read_text()) if p.exists() else {'blocked_cidrs':[]}
+        document,local=policy_snapshot()
+        if ROLE=='ips':process_validation(document)
         current=device_revision(document,ROLE)
         if current!=last:
             try:
                 if ROLE=='fw':apply(document.get('blocked_cidrs',[]),document)
                 else:
+                    test_rules(document,local)
                     active=Path('/opt/ips-active.rules');old=active.read_text()
+                    local_path=Path('/opt/local.rules');old_local=local_path.read_text()
+                    local_path.write_text(local)
                     active.write_text(Path('/opt/ips.rules').read_text()+'\n'+ips_rules(document))
                     try:
-                        run(['suricata','-T','-c','/etc/suricata/suricata.yaml','-S',str(active)])
+                        # Full combined rule set was checked before either active file changed.
                         ips_command('reload-rules')
                         engine['ruleset']=ips_command('ruleset-stats')
                     except Exception:
-                        active.write_text(old)
+                        active.write_text(old);local_path.write_text(old_local)
+                        ips_command('reload-rules')
                         raise
                 applied=current;status('applied')
             except Exception as error:status('error',str(error)[:400])

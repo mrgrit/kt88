@@ -11,6 +11,7 @@ def revision(value):
 
 def device_revision(document, device):
     value = {'rules': document.get('rules', {}).get(device, [])}
+    if device == 'ips': value['local_rules_sha256'] = document.get('local_rules_sha256', hashlib.sha256(b'').hexdigest())
     if device == 'fw': value['blocked_cidrs'] = document.get('blocked_cidrs', [])
     if device == 'waf': value.update(paranoia=document.get('paranoia', 2), inbound_threshold=document.get('inbound_threshold', 5))
     return revision(value)

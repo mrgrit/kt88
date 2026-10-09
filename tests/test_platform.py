@@ -217,3 +217,34 @@ def test_inherited_organization_skills_assignments_and_evidence(operator_console
  assert c.post(base+'/worker',json=body,headers=h).status_code==403
  assert c.put(base+'/skills/review-proof',json={'content':skill,'sha256':version},headers=h).status_code==403
  with pytest.raises(Exception):native.path('../outside')
+
+def test_native_ips_rule_validation_and_version(operator_console,tmp_path,monkeypatch):
+ from control import operations as ops
+ from security.local_rules import write_json, digest, validate_text
+ from security.policy_model import device_revision
+ c,h=operator_console
+ monkeypatch.setattr(ops,'directory',lambda:tmp_path)
+ url='/_kt88/api/devices/ips/local-rules'
+ saved=c.get(url).json();original=device_revision(ops.read_policy(),'ips')
+ text='alert http any any -> $HOME_NET any (msg:"Local test"; http.uri; content:"/test"; sid:9000001; rev:1;)\n'
+ assert c.post(url+'/validate',json={'version':saved['version'],'content':text}).status_code==403
+ job=c.post(url+'/validate',json={'version':saved['version'],'content':text},headers=h).json()
+ assert c.get(url+'/validation/'+job['id']).json()['status']=='pending'
+ assert c.post(url+'/apply',json={'validation_id':job['id']},headers=h).status_code==409
+ import time
+ write_json(tmp_path/'local-rules-result.json',{'id':job['id'],'status':'invalid','sha256':digest(text),'updated':time.time()})
+ assert c.post(url+'/apply',json={'validation_id':job['id']},headers=h).status_code==409
+ assert not (tmp_path/'local.rules').exists()
+ write_json(tmp_path/'local-rules-result.json',{'id':job['id'],'status':'valid','sha256':digest(text),'updated':time.time()})
+ assert c.post(url+'/apply',json={'validation_id':job['id']},headers=h).status_code==200
+ assert (tmp_path/'local.rules').read_text()==text
+ assert device_revision(ops.read_policy(),'ips')!=original
+ assert c.post(url+'/apply',json={'validation_id':job['id']},headers=h).status_code==409
+ assert 'content' not in c.get(url).json()['validation']
+ assert validate_text('# comment\n'+text)=='# comment\n'+text
+ for bad in ['a'*262145,'\x00','alert tcp any any -> any any (lua:evil.lua; sid:9;)']:
+  with pytest.raises(ValueError):validate_text(bad)
+ from control.db import connect
+ with connect() as db:db.execute("UPDATE users SET role='viewer' WHERE username='admin'")
+ assert c.get(url).status_code==200
+ assert c.post(url+'/validate',json={'version':c.get(url).json()['version'],'content':''},headers=h).status_code==403
