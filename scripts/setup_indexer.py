@@ -26,7 +26,11 @@ def main():
    put('/_plugins/_security/api/rolesmapping/'+name,{'backend_roles':[name],'users':[name]})
   put('/_index_template/'+args.analytics_prefix,{'index_patterns':[pattern],'template':{'settings':{'number_of_shards':1,'number_of_replicas':0},'mappings':{'dynamic':'strict','properties':{'id':{'type':'keyword'},'visitor':{'type':'keyword'},'timestamp':{'type':'date'},'name':{'type':'keyword'},'page':{'type':'keyword'},'album':{'type':'integer'},'attribution':{'type':'object','enabled':False}}}}})
   policy={'policy':{'description':'Delete analytics after 365 days','default_state':'active','states':[{'name':'active','actions':[],'transitions':[{'state_name':'delete','conditions':{'min_index_age':'365d'}}]},{'name':'delete','actions':[{'delete':{}}],'transitions':[]}],'ism_template':[{'index_patterns':[pattern],'priority':101}]}}
-  r=c.put('/_plugins/_ism/policies/'+args.analytics_prefix+'-retention',json=policy)
-  if r.status_code not in (200,201,409):r.raise_for_status()
+  path='/_plugins/_ism/policies/'+args.analytics_prefix+'-retention'
+  current=c.get(path);params={}
+  if current.status_code==200:
+   stored=current.json();params={'if_seq_no':stored['_seq_no'],'if_primary_term':stored['_primary_term']}
+  elif current.status_code!=404:current.raise_for_status()
+  r=c.put(path,params=params,json=policy);r.raise_for_status()
  print('Configured separate analytics writer, SOC reader, security writer and 365-day retention.')
 if __name__=='__main__':main()
