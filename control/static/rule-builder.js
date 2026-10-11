@@ -24,7 +24,7 @@ window.renderRuleBuilder=function(device,root,editor,role,api){
   field('분류 · classtype','classtype','',[['','없음'],...['web-application-attack','attempted-recon','attempted-dos','bad-unknown','policy-violation','trojan-activity'].map(v=>[v,v])]);field('SID · 9000000 이상','sid',nextId());field('규칙 버전 · rev','rev','1');
  }else{
   field('검사 변수 · |로 여러 변수 연결','variable','ARGS');field('연산자','operator','@contains',['@contains','@rx','@pm','@streq','@beginsWith','@endsWith','@detectSQLi','@detectXSS','@ipMatch','@eq','@gt','@lt'].map(v=>[v,v]));
-  field('탐지 패턴','pattern','KT88_TEST');field('부정 조건','negate','false',[['false','일치할 때'],['true','일치하지 않을 때']]);
+  field('탐지 패턴','pattern','kt88_test');field('부정 조건','negate','false',[['false','일치할 때'],['true','일치하지 않을 때']]);
   field('처리 단계 · phase','phase','2',[[1,'1 · 요청 헤더'],[2,'2 · 요청 본문·인자'],[3,'3 · 응답 헤더'],[4,'4 · 응답 본문']]);field('변환 · 쉼표로 순서 지정','transforms','none,urlDecodeUni,lowercase');
   field('차단 응답 상태','status','403');field('심각도','severity','WARNING',['CRITICAL','ERROR','WARNING','NOTICE','INFO'].map(v=>[v,v]));field('룰 ID · 9000000 이상','id',nextId());
   section.append(make('p','변수 예: ARGS, REQUEST_URI, REQUEST_HEADERS:User-Agent, REQUEST_COOKIES. 변환: none, lowercase, urlDecodeUni, removeNulls, compressWhitespace, htmlEntityDecode, normalizePath, removeWhitespace.','rule-help'));
@@ -41,7 +41,7 @@ window.renderRuleBuilder=function(device,root,editor,role,api){
    if(value==='tls')Object.assign(values,{proto:'tls',buffer:'tls.sni',content:'example.invalid',msg:'TLS SNI detection'});
    if(value==='syn')Object.assign(values,{proto:'tcp',flow:'stateless',content:'',flags:'S',threshold_count:'10',msg:'TCP SYN rate detection'});
   }else{
-   values={variable:'ARGS',operator:'@contains',pattern:'KT88_TEST',phase:'2',transforms:'none,urlDecodeUni,lowercase',msg:'Request argument detection'};
+   values={variable:'ARGS',operator:'@contains',pattern:'kt88_test',phase:'2',transforms:'none,urlDecodeUni,lowercase',msg:'Request argument detection'};
    if(value==='sqli')Object.assign(values,{variable:'ARGS|ARGS_NAMES',operator:'@detectSQLi',pattern:'',msg:'SQL injection detection'});
    if(value==='xss')Object.assign(values,{variable:'ARGS|ARGS_NAMES',operator:'@detectXSS',pattern:'',msg:'XSS detection'});
    if(value==='path')Object.assign(values,{variable:'REQUEST_URI',operator:'@beginsWith',pattern:'/example',phase:'1',msg:'Request path detection'});
