@@ -1,4 +1,5 @@
 import asyncio
+import hashlib
 import json
 import os
 import secrets
@@ -7,7 +8,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 import httpx
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse, HTMLResponse
 from pydantic import BaseModel, Field
 from . import auth
 from .db import init, connect, audit, ROOT
@@ -260,12 +261,17 @@ def healthz():return {'ok':True}
 
 @app.get('/_kt88')
 @app.get('/_kt88/')
-def console():return FileResponse(STATIC/'index.html')
+def console():
+    content=(STATIC/'index.html').read_text()
+    for name in ('app.js','style.css','datacenter.js','agents.js','operations.js','rule-builder.js'):
+        version=hashlib.sha256((STATIC/name).read_bytes()).hexdigest()[:16]
+        content=content.replace('/_kt88/static/'+name+'"','/_kt88/static/'+name+'?v='+version+'"')
+    return HTMLResponse(content,headers={'Cache-Control':'no-store'})
 
 @app.get('/_kt88/static/{name}')
 def static(name:str):
-    if name not in ('app.js','style.css','datacenter.js','agents.js','operations.js'):raise HTTPException(404)
-    return FileResponse(STATIC/name)
+    if name not in ('app.js','style.css','datacenter.js','agents.js','operations.js','rule-builder.js'):raise HTTPException(404)
+    return FileResponse(STATIC/name,headers={'Cache-Control':'no-cache'})
 
 from .agents import router as agent_router
 from .dashboard import router as dashboard_router

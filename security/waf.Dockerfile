@@ -6,6 +6,6 @@ RUN a2enmod proxy proxy_http headers remoteip security2 && a2dissite 000-default
 COPY security/waf.conf /etc/apache2/sites-enabled/kt88.conf
 COPY security/modsecurity.conf /etc/modsecurity/kt88.conf
 COPY security/waf.py /opt/waf.py
-COPY security/policy_model.py security/telemetry.py /opt/
+COPY security/policy_model.py security/telemetry.py security/local_rules.py security/waf_native.py /opt/
 EXPOSE 8080
 CMD ["python3","/opt/waf.py"]

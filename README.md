@@ -13,8 +13,8 @@ kt88은 웹사이트를 등록하면 방화벽·IPS·웹방화벽을 통과하�
 | 웹사이트 연결 | GUI에서 내부 HTTP upstream과 내부/public 도메인 등록·삭제, 상태 점검, 호스트명 기반 라우팅 |
 | 네트워크·시스템 관제 | 장비를 클릭하는 구성도, 주요 상황 대시보드, 인터페이스·IP·라우팅·트래픽·오류, 호스트/컨테이너 자원과 서비스 응답 |
 | FW · nftables | 출발 IPv4/CIDR 기준 허용·차단·거부 정책 등록·수정·중지·삭제, 패킷 카운터, 로그 |
-| IPS · Suricata | 인라인 탐지·차단, ET Open, 간편 정책, **Suricata 규칙 전문 편집과 별도 `local.rules` 관리** |
-| WAF · ModSecurity/OWASP CRS | IP·경로·User-Agent 정책, CRS 검사 강도·차단 점수, 로그, 적용 상태 |
+| IPS · Suricata | 인라인 탐지·차단, ET Open, 탐지룰 템플릿, **Suricata 전문 편집과 별도 `local.rules` 관리** |
+| WAF · ModSecurity/OWASP CRS | SecRule 탐지 템플릿·전문 편집, CRS 검사 강도·차단 점수, 로그, 적용 상태 |
 | Wazuh SIEM | 경보 조회·필터, 최고 관리자용 원래 대시보드와 Discover 검색을 콘솔 안에서 열기 |
 | 에이전트 운영 | 조직·팀/KPI·에이전트/R&R·담당 자산·스킬 관리, 정기/즉시 조사, 실행 증적과 설정 복원 이력 |
 | API·MCP | 관리 REST API, 읽기 전용 MCP `platform_health`, 에이전트용 상태·경보 조회 API |
@@ -129,11 +129,11 @@ Wazuh 전체 화면은 관리 기능을 포함하므로 최고 관리자만 사�
 
 ## Suricata 규칙 전문과 `local.rules`
 
-**FW·IPS·WAF → IPS → 정책 관리 → Suricata 사용자 규칙 · local.rules**에서 규칙 전문을 입력합니다.
+**FW·IPS·WAF → IPS → 정책 관리 → Suricata 규칙 전문 · local.rules**에서 규칙 전문을 입력합니다.
 
 1. 전문을 붙여넣거나 수정합니다. 줄 앞의 `#`으로 중지하고, 해당 줄을 지워 삭제할 수 있습니다.
 2. **구문 검사**를 눌러 실제 엔진에서 ET Open·기본 규칙·간편 정책과 함께 검사합니다.
-3. 검사 결과와 변경 내용을 확인한 뒤 **검사한 local.rules 저장·적용**을 누릅니다.
+3. 검사 결과와 변경 내용을 확인한 뒤 **검사한 전문 저장·적용**을 누릅니다.
 4. 엔진 적용 완료 또는 오류를 확인합니다. 오류 시 기존 실행 규칙을 유지합니다.
 
 | 파일 | 용도 |
@@ -155,7 +155,7 @@ CRS 기본값은 검사 강도 2, 요청 차단 점수 5, 응답 차단 점수 4
 
 - Wazuh 인덱스 패턴 등록의 필드 메타데이터
 - Discover 검색의 지정된 하이라이트 필드가 `2147483647`인 경우
-- IPS 규칙 검사 API의 Suricata 전문 `content` 필드
+- IPS/WAF 규칙 검사 API의 전문 `content` 필드 및 룰 미리보기 API의 `content`, `content2`, `pcre`, `pattern` 필드
 
 경로·메서드·필드에 제한된 예외이며 관리 인증과 나머지 검사는 유지합니다. 일반 비파일 요청 본문 한도는 2 MiB, Wazuh 인덱스 패턴 등록 경로는 4 MiB입니다. 구현은 [ModSecurity 설정](security/modsecurity.conf), [WAF 프록시 설정](security/waf.conf)에 있습니다.
 
@@ -267,3 +267,17 @@ bash scripts/verify-path.sh platform.example.internal 127.0.0.1
 [real ycdc](https://github.com/mrgrit/real_ycdc)는 kt88에 연결하는 별도 애플리케이션입니다. 사진 갤러리, Matomo 원래 화면, GA4·네이버 연결 설정, 사진 클릭·태그·키워드 관심 분석과 `ycdc-analytics-*` 데이터 뷰는 real ycdc 저장소에서 제공합니다. kt88 자체에는 학과 전용 콘텐츠나 이 앱의 계정·도메인을 넣지 않습니다.
 
 kt88은 다른 웹사이트에도 재사용할 수 있습니다. 기존 교육용 구성은 `archive/pre-production-20261009` 태그에 보존되어 있습니다.
+
+
+## IPS·WAF 탐지룰 템플릿과 전문 편집
+
+정책 관리 상단에서 템플릿을 선택하고 조건을 조정한 뒤 **룰 미리보기 → 아래 전문에 룰 추가 → 구문 검사 → 검사한 전문 저장·적용** 순서로 사용합니다. 기존 IP·포트 및 경로 간편 정책은 보존됩니다. 템플릿 추가는 편집 중인 전문 끝에만 붙이며 저장하거나 차단 정책을 자동 적용하지 않습니다. 아래 편집기에는 여러 줄의 전체 규칙을 직접 입력할 수 있습니다.
+
+- IPS: TCP 페이로드, HTTP URI·User-Agent, DNS 질의, TLS SNI, TCP SYN 빈도 템플릿. 헤더 주소·포트·방향, flow, sticky buffer, content 두 개, PCRE, nocase, TCP flags, threshold, classtype, SID·rev를 구성합니다. threshold는 경보 빈도 조건이며 drop 동작의 차단 시작 횟수가 아닙니다. HTTPS 내부 요청은 TLS 종료 뒤 WAF에서 검사합니다.
+- WAF: 요청 인자, SQLi·XSS libinjection, 요청 경로, User-Agent, 정규식 템플릿. 검사 변수, 연산자, 패턴, 부정 조건, 변환 순서, phase, 탐지/차단, 응답 코드, severity, ID를 구성합니다. 전문 파일은 `/policies/waf-local.conf`이며 기본 CRS와 별도로 관리합니다.
+- 최고 관리자 세션과 동일 출처·CSRF가 필요합니다. 엔진 검사 결과는 내용 해시·정책 버전·유효 시간에 묶이며 수정 후에는 다시 검사해야 합니다. WAF는 별도 임시 Apache 설정으로 전체 CRS와 함께 검사하여 실행 중인 설정을 건드리지 않습니다. 저장 후에도 검사 및 graceful reload 실패 시 활성 설정을 복구합니다.
+- 전문 편집기는 탐지 규칙을 지원합니다. WAF 파일 include·외부 파일/스크립트 실행·네트워크 조회·엔진 우회 액션은 배포 콘솔에서 관리합니다. 템플릿 미리보기 입력의 공격 문자열은 지정된 POST 경로의 지정 필드에만 CRS 예외가 적용됩니다.
+
+참고 화면: [Suricata 교육 GUI](https://github.com/mrgrit/suricata_edu_gui), [ModSecurity 교육 GUI](https://github.com/mrgrit/modsec_edu_gui).
+
+검증: 플랫폼 테스트 48개, 실제 Suricata 구문 검사, 격리된 Apache·ModSecurity·CRS의 구문/차단/예외 범위 검사, Chromium의 12개 템플릿·전문 보존·데스크톱/모바일 검증을 수행했습니다.

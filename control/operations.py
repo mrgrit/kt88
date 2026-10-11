@@ -237,8 +237,20 @@ def history(device:str,request:Request):
 async def security_summary(request:Request):
  auth.user(request);return await device_logs()
 
-# Native Suricata signatures are persisted independently of the simple rule builder.
+# Native detection rules are persisted independently of legacy address policies.
 from security.local_rules import digest as local_digest, validate_text, atomic, write_json
+from security.waf_native import validate_text as validate_waf_text
+from security.rule_builder import build_ips, build_waf
+
+def native_files(device):
+ if device not in ('ips','waf'):raise HTTPException(404,'지원하지 않는 규칙 엔진입니다.')
+ return ('local.rules','local-rules','local_rules_sha256',validate_text) if device=='ips' else ('waf-local.conf','waf-local-rules','waf_local_rules_sha256',validate_waf_text)
+
+@router.post('/devices/{device}/rule-preview')
+def preview_native_rule(device:str,data:dict,request:Request):
+ auth.user(request,('admin',));native_files(device)
+ try:return {'rule':(build_ips if device=='ips' else build_waf)(data)}
+ except (ValueError,TypeError) as error:raise HTTPException(422,str(error))
 
 class LocalRulesChange(BaseModel):
  version: str = Field(min_length=64,max_length=64)
@@ -247,49 +259,53 @@ class LocalRulesChange(BaseModel):
 class LocalRulesApply(BaseModel):
  validation_id: str = Field(pattern='^[a-f0-9]{32}$')
 
-@router.get('/devices/ips/local-rules')
-def local_rules_get(request:Request):
+@router.get('/devices/{device}/local-rules')
+def local_rules_get(device:str,request:Request):
+ filename,prefix,key,validate=native_files(device)
  auth.user(request)
  with policy_lock():
-  doc=read_policy();path=directory()/'local.rules'
+  doc=read_policy();path=directory()/filename
   content=path.read_text() if path.exists() else ''
-  return {'content':content,'version':revision(doc),'sha256':local_digest(content),'file':'local.rules',
-          'validation':{k:v for k,v in read_json('local-rules-result.json').items() if k!='content'},'apply':read_json('ips-status.json')}
+  return {'content':content,'version':revision(doc),'sha256':local_digest(content),'file':filename,
+          'validation':{k:v for k,v in read_json(prefix+'-result.json').items() if k!='content'},'apply':read_json(device+'-status.json')}
 
-@router.post('/devices/ips/local-rules/validate',status_code=202)
-def local_rules_validate(change:LocalRulesChange,request:Request):
+@router.post('/devices/{device}/local-rules/validate',status_code=202)
+def local_rules_validate(device:str,change:LocalRulesChange,request:Request):
+ filename,prefix,key,validate=native_files(device)
  user=auth.user(request,('admin',))
- try:validate_text(change.content)
+ try:validate(change.content)
  except ValueError as error:raise HTTPException(422,str(error))
  with policy_lock():
   doc=read_policy()
   if revision(doc)!=change.version:raise HTTPException(409,'정책이 변경되었습니다. 다시 불러온 후 검사하세요.')
-  job=read_json('local-rules-job.json');result=read_json('local-rules-result.json')
+  job=read_json(prefix+'-job.json');result=read_json(prefix+'-result.json')
   if job and job.get('id')!=result.get('id') and time.time()-job.get('created',0)<120:raise HTTPException(409,'규칙 검사 중입니다. 잠시 후 다시 시도하세요.')
   job={'id':secrets.token_hex(16),'version':change.version,'content':change.content,'sha256':local_digest(change.content),'created':time.time()}
-  write_json(directory()/'local-rules-job.json',job)
- audit(user['username'],'ips_local_rules_validate',{'id':job['id'],'sha256':job['sha256']})
+  write_json(directory()/(prefix+'-job.json'),job)
+ audit(user['username'],device+'_local_rules_validate',{'id':job['id'],'sha256':job['sha256']})
  return {'id':job['id'],'status':'pending'}
 
-@router.get('/devices/ips/local-rules/validation/{validation_id}')
-def local_rules_validation(validation_id:str,request:Request):
+@router.get('/devices/{device}/local-rules/validation/{validation_id}')
+def local_rules_validation(device:str,validation_id:str,request:Request):
+ filename,prefix,key,validate=native_files(device)
  auth.user(request)
- result=read_json('local-rules-result.json')
+ result=read_json(prefix+'-result.json')
  if result.get('id')==validation_id:return result
- job=read_json('local-rules-job.json')
+ job=read_json(prefix+'-job.json')
  if job.get('id')!=validation_id:raise HTTPException(404,'검사 요청을 찾을 수 없습니다.')
  return {'id':validation_id,'status':'pending' if time.time()-job['created']<120 else 'expired'}
 
-@router.post('/devices/ips/local-rules/apply')
-def local_rules_apply(change:LocalRulesApply,request:Request):
+@router.post('/devices/{device}/local-rules/apply')
+def local_rules_apply(device:str,change:LocalRulesApply,request:Request):
+ filename,prefix,key,validate=native_files(device)
  user=auth.user(request,('admin',))
  with policy_lock():
-  doc=read_policy();job=read_json('local-rules-job.json');result=read_json('local-rules-result.json')
+  doc=read_policy();job=read_json(prefix+'-job.json');result=read_json(prefix+'-result.json')
   if job.get('id')!=change.validation_id or result.get('id')!=change.validation_id or result.get('status')!='valid':raise HTTPException(409,'구문 검사를 통과한 변경안만 적용할 수 있습니다.')
   if revision(doc)!=job['version'] or time.time()-result.get('updated',0)>600:raise HTTPException(409,'정책이 변경되었거나 검사 유효 시간이 지났습니다. 다시 검사하세요.')
-  content=validate_text(job['content'])
+  content=validate(job['content'])
   if local_digest(content)!=result.get('sha256'):raise HTTPException(409,'검사 결과가 변경안과 다릅니다.')
-  atomic(directory()/'local.rules',content)
-  doc['local_rules_sha256']=local_digest(content);write_policy(doc)
- audit(user['username'],'ips_local_rules_apply',{'id':change.validation_id,'sha256':doc['local_rules_sha256']})
- return {'ok':True,'status':'pending_device_apply','desired_revision':device_revision(doc,'ips')}
+  atomic(directory()/filename,content)
+  doc[key]=local_digest(content);write_policy(doc)
+ audit(user['username'],device+'_local_rules_apply',{'id':change.validation_id,'sha256':doc[key]})
+ return {'ok':True,'status':'pending_device_apply','desired_revision':device_revision(doc,device)}

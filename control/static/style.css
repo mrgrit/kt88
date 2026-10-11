@@ -5,3 +5,5 @@ main{max-width:1900px;padding:32px 3vw}header{margin-bottom:14px}.summary-bar{di
 #agent-native-frame{width:100%;height:85vh;min-height:720px;border:1px solid #c6d6de;border-radius:14px;margin-top:20px;background:#0f1720}[data-agent-screen].active{background:#153d49}
 
 .native-rules-editor{width:100%;font-family:monospace;white-space:pre;overflow:auto;min-height:24rem}
+
+.rule-builder{border:1px solid var(--line,#42505e);padding:20px;margin-bottom:28px}.rule-builder h3{margin-top:0}.rule-builder .rule-full{grid-column:1/-1}.rule-builder label{min-width:0}.rule-builder input,.rule-builder select{min-width:0;width:100%;box-sizing:border-box}.rule-help{font-size:13px;line-height:1.7}.rule-builder pre{white-space:pre-wrap;overflow-wrap:anywhere}.native-rules-editor{box-sizing:border-box;width:100%}
