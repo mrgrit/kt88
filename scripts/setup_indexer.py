@@ -14,7 +14,7 @@ def main():
   def put(path,value):r=c.put(path,json=value);r.raise_for_status()
   roles={
    'analytics-writer':{'cluster_permissions':['cluster_composite_ops'],'index_permissions':[{'index_patterns':[pattern],'allowed_actions':['crud','create_index','indices:admin/delete','indices:data/write/delete/byquery','indices:admin/mappings/put']}]},
-   'soc-reader':{'cluster_permissions':[],'index_permissions':[{'index_patterns':['wazuh-alerts-*','kt88-security-*'],'allowed_actions':['read']}]},
+   'soc-reader':{'cluster_permissions':[],'index_permissions':[{'index_patterns':['wazuh-alerts-*','wazuh-archives-*','kt88-security-*'],'allowed_actions':['read']}]},
    'security-writer':{'cluster_permissions':['cluster_composite_ops'],'index_permissions':[{'index_patterns':['kt88-security-*'],'allowed_actions':['crud','create_index']}]}
   }
   for name,role in roles.items():

@@ -15,7 +15,7 @@ kt88은 웹사이트를 등록하면 방화벽·IPS·웹방화벽을 통과하�
 | FW · nftables | 출발 IPv4/CIDR 기준 허용·차단·거부 정책 등록·수정·중지·삭제, 패킷 카운터, 로그 |
 | IPS · Suricata | 인라인 탐지·차단, ET Open, 탐지룰 템플릿, **Suricata 전문 편집과 별도 `local.rules` 관리** |
 | WAF · ModSecurity/OWASP CRS | SecRule 탐지 템플릿·전문 편집, CRS 검사 강도·차단 점수, 로그, 적용 상태 |
-| Wazuh SIEM | 경보 조회·필터, 최고 관리자용 원래 대시보드와 Discover 검색을 콘솔 안에서 열기 |
+| Wazuh SIEM | 경보 조회·필터, 일반 FW/IPS/WAF 이벤트 archive 전송, 최고 관리자용 전체 로그 Discover |
 | 에이전트 운영 | 조직·팀/KPI·에이전트/R&R·담당 자산·스킬 관리, 정기/즉시 조사, 실행 증적과 설정 복원 이력 |
 | API·MCP | 관리 REST API, 읽기 전용 MCP `platform_health`, 에이전트용 상태·경보 조회 API |
 

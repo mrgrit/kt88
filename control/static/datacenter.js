@@ -19,7 +19,7 @@ canvas.append(node('host','호스트 · SMS',26,266,['CPU · 메모리 · 디스
 }
 window.drawNetwork=async value=>{state=value;draw()};
 async function office(){const result=await api('agents');const cards=[];const soc=el('article');soc.append(el('h3','SOC 관제'),el('p','Wazuh에서 보안 경보 조사'));const b=el('button','관제 화면');b.onclick=()=>safe(async()=>{await load('siem');if(role==='admin')window.openWazuh()});soc.append(b);cards.push(soc);result.agents.forEach(a=>{const card=el('article');card.append(el('h3',a.name),el('p',a.description),el('span',a.enabled?'자동 운영 중':'자동 운영 중지','badge'));const b=el('button','정의 · 작업 · 실행 근거','secondary');b.onclick=()=>safe(async()=>{await load('agents');await window.editAgent(a.id)});card.append(b);cards.push(card)});$('office-roster').replaceChildren(...cards)}
-window.prepareWazuh=()=>{$('open-wazuh').hidden=role!=='admin';$('wazuh-newtab').hidden=role!=='admin';$('wazuh-note').textContent=role==='admin'?'현재 관리자 권한으로 실제 Wazuh 화면을 엽니다.':'최근 경보를 조회할 수 있습니다. 전체 관리 화면은 최고 관리자에게 제공됩니다.'};
+window.prepareWazuh=()=>{$('wazuh-events').hidden=role!=='admin';$('open-wazuh').hidden=role!=='admin';$('wazuh-newtab').hidden=role!=='admin';$('wazuh-note').textContent=role==='admin'?'현재 관리자 권한으로 실제 Wazuh 화면을 엽니다.':'최근 경보를 조회할 수 있습니다. 전체 관리 화면은 최고 관리자에게 제공됩니다.'};
 window.openWazuh=()=>{$('wazuh-frame').src='/_kt88/wazuh/';$('wazuh-frame').hidden=false};
 $('open-wazuh').onclick=window.openWazuh;document.querySelectorAll('[data-floor]').forEach(b=>b.onclick=()=>safe(async()=>{floor=b.dataset.floor;if(floor==='operations')await office();draw()}));document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>$(b.dataset.close).close());
 })();

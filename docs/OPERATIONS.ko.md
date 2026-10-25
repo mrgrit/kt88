@@ -66,3 +66,10 @@ kt88 단독 설치는 이 관제와 장비 정책, NMS/SMS 수집기를 포함�
 조직 화면에서 팀·근무자·스킬 등록과 R&R 연결 후 실제 Thor 조사 작업 38번이 완료되었다. 연결 스킬 해시·도구 조회 응답·토큰 사용량과 관제 화면 표시를 확인했다. JavaScript 및 HTTP 오류는 없었다. 검증용 계정·팀·역할·스킬은 제거하고 실행 감사 기록은 보존했다. 외부 Claude Code/Codex/Hermes CLI 실행을 검증한 것은 아니다.
 
 추가 검색 오탐(2026-10-09): 실제 WAF 감사 로그에 나타난 `params.body.query.highlight.fragment_size`, `params.body.query.bool.highlight.fragment_size`의 정확한 값 `2147483647`도 규칙 200005/200006으로 같은 두 POST 검색 경로에서만 제외한다. 다른 값·경로·XSS는 계속 검사한다. 회귀 스크립트에 두 경로를 포함했다.
+
+
+### 일반 장비 이벤트와 Discover
+
+Wazuh 경보 인덱스 `wazuh-alerts-*`는 탐지 규칙을 통과한 경보만 포함한다. FW 상태, IPS flow/TLS 등 평상시 이벤트는 manager의 `logall_json=yes`와 Filebeat `archives.enabled=true`로 `wazuh-archives-*`에 전송한다. 설치기는 manager 부팅 훅을 마운트하여 컨테이너 재생성 뒤에도 전송 설정을 유지한다. 경보 규칙과 기존 경보 전송은 유지한다. 전체 로그 저장으로 디스크 사용량이 늘어나므로 운영 용량을 확인한다.
+
+첫 archive 인덱스 생성 후 control 컨테이너에서 `scripts/setup_security_views.py --set-default`를 실행한다(호스트 파일을 `docker compose ... exec -T control python - --set-default < scripts/setup_security_views.py`로 전달). 이 명령은 `timestamp` 기반 Discover 데이터 뷰, FW/IPS/WAF 저장 검색, SOC 읽기 권한을 구성한다. `--set-default`는 Discover 기본 인덱스도 전체 로그로 바꾼다. 운영 콘솔의 **보안장비 전체 로그**로 최근 24시간을 바로 검색한다. 기존 설치는 manager XML과 overlay에 해당 설정/훅만 반영하고 manager를 재생성한다. 전체 준비 스크립트를 실행하여 운영 설정을 덮어쓰지 않는다. 활성화 전 일반 이벤트는 자동 소급 전송되지 않는다.

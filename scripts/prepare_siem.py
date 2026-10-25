@@ -3,6 +3,7 @@
 import argparse,json,os,secrets,subprocess,tarfile,tempfile,urllib.request
 from pathlib import Path
 import yaml
+from siem_archives import enable_archive_logging
 ROOT=Path(__file__).resolve().parents[1]
 VERSION='v4.14.8'
 
@@ -56,13 +57,15 @@ def main():
  compose.pop('networks',None)
  out=dest/'compose.overlay.yaml';out.write_text(yaml.safe_dump(compose,sort_keys=False));os.chmod(out,0o600)
  manager_conf=dest/'config/wazuh_cluster/wazuh_manager.conf'
- content=manager_conf.read_text()
+ content=enable_archive_logging(manager_conf.read_text())
  if 'kt88 operational collection' not in content:
   collection='<!-- kt88 operational collection -->\n'
   for file in ['ips/eve.json','waf/modsec_audit.log','fw/fw.json']:
    collection+='<localfile><log_format>json</log_format><location>/var/log/kt88/'+file+'</location></localfile>\n'
-  content=content.replace('</ossec_config>',collection+'</ossec_config>',1);manager_conf.write_text(content)
+  content=content.replace('</ossec_config>',collection+'</ossec_config>',1)
+ manager_conf.write_text(content)
  manager=compose['services']['wazuh.manager'];manager['volumes'].append(str(Path(args.logs_dir).resolve() if args.logs_dir else ROOT/'.runtime/logs')+':/var/log/kt88:ro')
+ manager['volumes'].append(str(ROOT/'security/filebeat-archives.sh')+':/etc/cont-init.d/1-archives:ro')
  local_rules=dest/'kt88-rules.xml'
  local_rules.write_text('<group name="kt88,"><rule id="110001" level="0"><decoded_as>json</decoded_as><field name="component">^fw$</field><description>kt88 firewall blocked packet counter</description></rule><rule id="110002" level="7"><if_sid>110001</if_sid><field name="blocked_packets" type="pcre2">^[1-9][0-9]*$</field><description>kt88 firewall observed blocked packets</description></rule><rule id="110010" level="7"><decoded_as>json</decoded_as><field name="audit_data.action.intercepted">^true$</field><description>kt88 WAF blocked a request using OWASP CRS</description></rule></group>')
  manager['volumes'].append(str(local_rules)+':/var/ossec/etc/rules/kt88_rules.xml:ro')
